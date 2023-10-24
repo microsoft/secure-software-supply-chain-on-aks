@@ -1,0 +1,6 @@
+# Ensure that all shell scripts are checked out with LF line endings
+# on Windows. This is necessary because Git for Windows defaults to
+# CRLF line endings, which breaks the shell scripts.
+# NOTE: for best results on Windows, clone the code in a in a file system
+# under Windows Subsystem for Linux (WSL) - see https://www.docker.com/blog/docker-desktop-wsl-2-best-practices/
+*.sh text eol=lf

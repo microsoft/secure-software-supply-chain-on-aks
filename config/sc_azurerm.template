@@ -1,0 +1,29 @@
+{
+  "data": {
+    "scopeLevel": "Subscription",
+    "environment": "AzureCloud",
+    "subscriptionId": "",
+    "subscriptionName": ""
+  },
+  "name": "",
+  "type": "azurerm",
+  "url": "https://management.azure.com/",
+  "authorization": {
+    "parameters": {
+      "serviceprincipalid": "",
+      "tenantid": ""
+    },
+    "scheme": "WorkloadIdentityFederation"
+  },
+  "isShared": false,
+  "isReady": true,
+  "serviceEndpointProjectReferences": [
+    {
+      "projectReference": {
+        "id": "",
+        "name": "null"
+      },
+      "name": ""
+    }
+  ]
+}

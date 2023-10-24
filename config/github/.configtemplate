@@ -1,0 +1,12 @@
+# Reference ./docs/walkthrough/github-actions/readme.md for details
+
+AZURE_SUBSCRIPTION_ID=
+GITHUB_REPO=
+AZURE_LOCATION=eastus
+CI_CD_PLATFORM=github
+PROJECT=ssscsample
+GATEKEEPER_VERSION=3.11.0
+RATIFY_VERSION=1.7.0
+KUBERNETES_VERSION=1.26.3
+GIT_BRANCH=main
+TAGS=

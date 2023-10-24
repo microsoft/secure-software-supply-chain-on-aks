@@ -1,0 +1,124 @@
+parameters:
+- name: variableGroupName
+  displayName: Variable Group Name
+  type: string
+  default: ssscsample
+
+trigger: none
+pr: none
+
+name: Secure Software Supply Chain
+
+variables:
+- group: ${{ parameters.variableGroupName }}
+- name: SIGNED_APP_NAME
+  value: trips
+- name: UNSIGNED_APP_NAME
+  value: poi
+- name: IMAGE_TAG
+  value: v1
+
+resources:
+  containers:
+    - container: oci-registry
+      image: ghcr.io/oras-project/registry@sha256:321aaa9de1049b3988a8cb7e4ae2043ec13df78bf140b5335b015823e9779da3 #v1.0.0-rc.4
+      ports:
+        - '5000:5000'
+
+jobs:
+- job: Signed
+  displayName: "Build & Push Signed Image"
+  services:
+    oci-registry: oci-registry
+  variables:
+    - name: APP_DIR
+      value: ./src/$(SIGNED_APP_NAME)
+
+  steps:
+  - bash: scripts/tooling/install-tooling.sh
+    displayName: "Install Tooling (oras, notation, sbom-tool, trivy)"
+  - template: templates/docker-build-and-push.yml
+    parameters:
+      workingDirectory: $(APP_DIR)
+      imageTag: localhost:5000/$(SIGNED_APP_NAME):$(IMAGE_TAG)
+
+  - bash: notation key add default --id $(SIGNING_KEY_ID) --plugin azure-kv --plugin-config "as_secret"=true
+    displayName: "Add notation key"
+
+  - task: AzureCLI@2
+    displayName: "Create & Attach SBOM"
+    inputs:
+      azureSubscription: $(AZURE_SERVICE_CONNECTION)
+      workingDirectory: $(APP_DIR)
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        sbom-tool generate \
+            -BuildDropPath . \
+            -BuildComponentPath . \
+            -PackageName pn \
+            -ManifestDirPath . \
+            -PackageVersion 1.0 \
+            -PackageSupplier $SIGNED_APP_NAME \
+            -NamespaceUriUniquePart $SIGNED_APP_NAME \
+            -NamespaceUriBase https://www.microsoft.com \
+            -DeleteManifestDirIfPresent true
+
+        oras attach --artifact-type application/org.example.sbom.v0 $IMAGE_PATH ./_manifest/spdx_2.2/manifest.spdx.json:application/spdx+json
+
+  - task: AzureCLI@2
+    displayName: "Run & Attach Vulnerability Scan Results"
+    inputs:
+      azureSubscription: $(AZURE_SERVICE_CONNECTION)
+      workingDirectory: $(APP_DIR)
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        trivy fs --format sarif --output trivy_scan_results.json .
+        oras attach --artifact-type application/trivy+json $IMAGE_PATH trivy_scan_results.json:application/sarif+json
+    env:
+      IMAGE_REPO: localhost:5000/$(SIGNED_APP_NAME)
+
+  - task: AzureCLI@2 # Run in an AzureCLI task so that notation can authenticate to Azure Key Vault
+    displayName: "Sign Artifacts"
+    inputs:
+      azureSubscription: $(AZURE_SERVICE_CONNECTION)
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        notation sign --signature-format cose --key default $IMAGE_PATH
+        notation sign --signature-format cose $IMAGE_REPO@$(oras discover -o json --artifact-type application/org.example.sbom.v0 $IMAGE_PATH | jq -r ".manifests[0].digest") --key default
+        notation sign --signature-format cose $IMAGE_REPO@$(oras discover -o json --artifact-type application/trivy+json $IMAGE_PATH | jq -r ".manifests[0].digest") --key default
+    env:
+      IMAGE_REPO: localhost:5000/$(SIGNED_APP_NAME)
+
+  - template: templates/copy-to-acr.yml
+    parameters:
+      azureServiceConnection: $(AZURE_SERVICE_CONNECTION)
+      acrName: $(ACR_NAME)
+      localImage: $(IMAGE_PATH)
+      remoteImage: $(ACR_LOGIN_SERVER)/$(SIGNED_APP_NAME):$(IMAGE_TAG)
+
+- job: Unsigned
+  displayName: "Build & Push Unsigned Image"
+  services:
+    oci-registry: oci-registry
+  variables:
+    - name: APP_DIR
+      value: ./src/$(UNSIGNED_APP_NAME)
+
+  steps:
+  - bash: scripts/tooling/install-tooling.sh
+    displayName: "Install ORAS and Notation"
+
+  - template: templates/docker-build-and-push.yml
+    parameters:
+      workingDirectory: $(APP_DIR)
+      imageTag: localhost:5000/$(UNSIGNED_APP_NAME):$(IMAGE_TAG)
+
+  - template: templates/copy-to-acr.yml
+    parameters:
+      azureServiceConnection: $(AZURE_SERVICE_CONNECTION)
+      acrName: $(ACR_NAME)
+      localImage: $(IMAGE_PATH)
+      remoteImage: $(ACR_LOGIN_SERVER)/$(UNSIGNED_APP_NAME):$(IMAGE_TAG)

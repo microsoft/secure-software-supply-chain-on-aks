@@ -1,0 +1,14 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: TrivyScanVerification
+metadata:
+  name: trivy-validation
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces:
+      - "default"
+  parameters:
+    issuer: "CN=ca.example.com,OU=My Org,O=My Company,L=Redmond,ST=WA,C=US"

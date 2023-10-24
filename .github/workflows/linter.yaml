@@ -1,0 +1,56 @@
+name: Linter
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  linter:
+    name: Linter
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      APPLY_FIXES: all # When active, APPLY_FIXES must also be defined as environment variable
+      APPLY_FIXES_EVENT: pull_request # Decide which event triggers application of fixes in a commit or a PR (pull_request, push, all)
+      APPLY_FIXES_MODE: commit # If APPLY_FIXES is used, defines if the fixes are directly committed (commit) or posted in a PR (pull_request)
+    steps:
+      - name: 🔑 Get Token
+        uses: wow-actions/use-app-token@v2
+        id: get-token
+        with:
+          app_id: ${{ secrets.CSE_LABS_BOT_APP_ID }}
+          private_key: ${{ secrets.CSE_LABS_BOT_PRIVATE_KEY }}
+
+      - name: ⤵️ Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.get-token.outputs.BOT_TOKEN }}
+          fetch-depth: 0
+
+      - name: 🧹 MegaLinter
+        id: megalinter
+        uses: oxsecurity/megalinter/flavors/documentation@v7.4.0
+        env:
+          GITHUB_TOKEN: ${{ steps.get-token.outputs.BOT_TOKEN }}
+
+      - name: 🤖 Get bot details
+        if: ${{ steps.megalinter.outputs.has_updated_sources == 1 && env.APPLY_FIXES_EVENT == github.event_name && github.ref != 'refs/heads/main' && github.event.pull_request.head.repo.full_name == github.repository }}
+        id: bot-details
+        uses: raven-actions/bot-details@v1
+        with:
+          bot-slug-name: ${{ steps.get-token.outputs.BOT_NAME }}
+
+      - name: 🆙 Commit and push applied linter fixes
+        if: ${{ steps.megalinter.outputs.has_updated_sources == 1 && env.APPLY_FIXES_EVENT == github.event_name && github.ref != 'refs/heads/main' && github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          branch: ${{ github.event.pull_request.head.ref || github.head_ref || github.ref }}
+          commit_message: 'style: apply linter fixes'
+          commit_user_name: ${{ steps.bot-details.outputs.name }}
+          commit_user_email: ${{ steps.bot-details.outputs.email }}
+          commit_author: ${{ steps.bot-details.outputs.name-email }}
