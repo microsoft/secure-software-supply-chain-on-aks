@@ -1,0 +1,169 @@
+name: Secure Software Supply Chain for Linux workloads with Notation
+
+permissions:
+  id-token: write
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: 'Environment name'
+        required: true
+        default: ssscsample
+        type: string
+
+env:
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
+  RESOURCE_GROUP: ${{ vars.RESOURCE_GROUP }}
+  SIGNING_KEY_ID: ${{ vars.SIGNING_KEY_ID }}
+  SIGNED_APP_NAME: trips
+  UNSIGNED_APP_NAME: poi
+  IMAGE_TAG: v1
+  ORAS_VERSION: 1.0.0
+
+jobs:
+  signed:
+    name: "Build & Push Signed Image"
+    environment: 
+      name: ${{ inputs.environment_name }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    services:
+      oci-registry:
+        image: ghcr.io/oras-project/registry@sha256:321aaa9de1049b3988a8cb7e4ae2043ec13df78bf140b5335b015823e9779da3 #v1.0.0-rc.4
+        ports:
+          - 5000:5000
+
+    steps:
+      - name: "Checkout GitHub Action"
+        uses: actions/checkout@main
+
+      - name: "Login via Azure CLI"
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: "Install Notation CLI"
+        run: ./scripts/tooling/install-notation.sh
+
+      - name: "Install ORAS CLI"
+        uses: oras-project/setup-oras@main
+        with:
+          version: ${{env.ORAS_VERSION}}
+
+      - name: "Install Microsoft SBOM Tool"
+        run: ./scripts/tooling/install-sbom-tool.sh
+
+      - name: "Install Trivy CLI"
+        run: ./scripts/tooling/install-trivy.sh
+
+      - name: "Build and push image to local registry"
+        id: BuildAndPush
+        working-directory: ${{ github.workspace }}/src/${{ env.SIGNED_APP_NAME }}
+        run: |
+          docker build -t $TAGGED_IMG .
+          docker push $TAGGED_IMG
+
+          IMAGE_PATH=$(docker image inspect --format='{{index .RepoDigests 0}}' $TAGGED_IMG)
+          IMAGE_DIGEST=$(echo $IMAGE_PATH | cut -d'@' -f2)
+
+          echo "IMAGE_PATH=$IMAGE_PATH" >> $GITHUB_ENV
+          echo "IMAGE_DIGEST=$IMAGE_DIGEST" >> $GITHUB_OUTPUT
+        env:
+          TAGGED_IMG: localhost:5000/${{ env.SIGNED_APP_NAME }}:${{ env.IMAGE_TAG }}
+
+      - name: "Add notation key"
+        run: notation key add default --id $SIGNING_KEY_ID --plugin azure-kv --plugin-config "as_secret"=true
+
+      - name: "Create & Attach SBOM"
+        run: |
+          sbom-tool generate \
+            -BuildDropPath ./src/$SIGNED_APP_NAME \
+            -BuildComponentPath ./src/$SIGNED_APP_NAME \
+            -PackageName pn \
+            -ManifestDirPath . \
+            -PackageVersion 1.0 \
+            -PackageSupplier $SIGNED_APP_NAME \
+            -NamespaceUriUniquePart $SIGNED_APP_NAME \
+            -NamespaceUriBase https://www.microsoft.com \
+            -DeleteManifestDirIfPresent true
+
+          oras attach --artifact-type application/org.example.sbom.v0 $IMAGE_PATH ./_manifest/spdx_2.2/manifest.spdx.json:application/spdx+json
+
+      - name: "Run & Attach Vulnerability Scan Results"
+        run: |
+          trivy fs --format sarif --output trivy_scan_results.json ./src/$SIGNED_APP_NAME
+          oras attach --artifact-type application/trivy+json $IMAGE_PATH trivy_scan_results.json:application/sarif+json
+
+      - name: "Sign Artifacts"
+        run: |
+          notation sign --signature-format cose --key default $IMAGE_PATH
+          notation sign --signature-format cose $IMAGE_REPO@$(oras discover -o json --artifact-type application/org.example.sbom.v0 $IMAGE_PATH | jq -r ".manifests[0].digest") --key default
+          notation sign --signature-format cose $IMAGE_REPO@$(oras discover -o json --artifact-type application/trivy+json $IMAGE_PATH | jq -r ".manifests[0].digest") --key default
+        env:
+          IMAGE_REPO: localhost:5000/${{ env.SIGNED_APP_NAME }}
+
+      - name: "Login to ACR"
+        run: az acr login --name $ACR_NAME
+
+      - name: "Copy to ACR"
+        run: oras copy $IMAGE_PATH $ACR_LOGIN_SERVER/$SIGNED_APP_NAME:$IMAGE_TAG --recursive
+
+  unsigned:
+    name: "Build & Push Unsigned Image"
+    runs-on: ubuntu-latest
+    environment: 
+      name: ${{ inputs.environment_name }}
+    defaults:
+      run:
+        shell: bash
+
+    services:
+      oci-registry:
+        image: ghcr.io/oras-project/registry@sha256:321aaa9de1049b3988a8cb7e4ae2043ec13df78bf140b5335b015823e9779da3 #v1.0.0-rc.4
+        ports:
+          - 5000:5000
+
+    steps:
+      - name: "Checkout GitHub Action"
+        uses: actions/checkout@main
+
+      - name: "Login via Azure CLI"
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: "Install ORAS CLI"
+        uses: oras-project/setup-oras@main
+        with:
+          version: ${{env.ORAS_VERSION}}
+
+      - name: "Build and push image to local registry"
+        id: BuildAndPush
+        working-directory: ${{ github.workspace }}/src/${{ env.UNSIGNED_APP_NAME }}
+        run: |
+          docker build -t $TAGGED_IMG .
+          docker push $TAGGED_IMG
+
+          IMAGE_PATH=$(docker image inspect --format='{{index .RepoDigests 0}}' $TAGGED_IMG)
+          IMAGE_DIGEST=$(echo $IMAGE_PATH | cut -d'@' -f2)
+
+          echo "IMAGE_PATH=$IMAGE_PATH" >> $GITHUB_ENV
+          echo "IMAGE_DIGEST=$IMAGE_DIGEST" >> $GITHUB_OUTPUT
+        env:
+          TAGGED_IMG: localhost:5000/${{ env.UNSIGNED_APP_NAME }}:${{ env.IMAGE_TAG }}
+
+      - name: "Login to ACR"
+        run: az acr login --name $ACR_NAME
+
+      - name: "Copy to ACR"
+        run: oras copy $IMAGE_PATH $ACR_LOGIN_SERVER/$UNSIGNED_APP_NAME:$IMAGE_TAG --recursive

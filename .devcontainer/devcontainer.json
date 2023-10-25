@@ -1,0 +1,39 @@
+{
+  "name": "Secure Software Supply Chain Scenario",
+  "build": {
+    "dockerfile": "Dockerfile",
+    // Update 'VARIANT' to pick an Ubuntu version: jammy / ubuntu-22.04, focal / ubuntu-20.04, bionic /ubuntu-18.04
+    // Use ubuntu-22.04 or ubuntu-18.04 on local arm64/Apple Silicon.
+    "args": {
+      "VARIANT": "jammy"
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/azure-cli:1": {
+      "installBicep": true
+    },
+    "ghcr.io/jsburckhardt/devcontainer-features/notation:1": {
+      "version": "v1.0.0-rc.7"
+    },
+    "ghcr.io/dhoeric/features/oras:1": {
+      "version": "1.0.0"
+    },
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+      "minikube": "none"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.azurecli",
+        "ms-azure-devops.azure-pipelines",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "ms-azuretools.vscode-bicep",
+        "DavidAnson.vscode-markdownlint",
+        "streetsidesoftware.code-spell-checker"
+      ]
+    }
+  },
+  "postCreateCommand": "./.devcontainer/postCreateCommand.sh"
+}
