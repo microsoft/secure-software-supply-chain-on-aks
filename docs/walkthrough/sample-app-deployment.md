@@ -40,12 +40,11 @@ The output should resemble:
 ```diff
 time="2023-08-08T17:38:51Z" level=info msg="Resolve of the image completed successfully the digest is sha256:7393f69227364c91cc53d846a67794a50fdb9bed47274dec6f767cb4ec769c4b"
 {
-    "isSuccess": false,
-    "verifierReports":
-    [{
+    "verifierReports":[
+    {
         "subject": "ssscf728s8acr.azurecr.io/poi@sha256:7393f69227364c91cc53d846a67794a50fdb9bed47274dec6f767cb4ec769c4b",
         "isSuccess": false,
--       "message": "verification failed: no referrers found for this artifact"
+-       "message": "verification failed: Error: referrers not found, Code: REFERRERS_NOT_FOUND, Component Type: executor"
     }]
 }
 ```

@@ -25,7 +25,9 @@ spec:
       rego: |
         package notationsigningverification
         import future.keywords.if
-        
+        import future.keywords.in
+        import future.keywords.every
+
         violation[{"msg": msg}] {
           # Get data from Ratify
           images := [img | img = input.review.object.spec.containers[_].image]
@@ -34,31 +36,52 @@ spec:
           msg := response_with_error(response)
         }
 
-        # check for system errors
+        # check for errors
         response_with_error(response) := msg if {
-          err := response.system_error
-          err != ""
-          msg := sprintf("System error calling external data provider: %s", err)
+          errors := response.errors[_]
+          subject := errors[0]
+          err := errors[1]
+          msg := sprintf("Failed evaluation of subject %s: %s", [subject, err])
         }
 
-        # check for Ratify execution errors
-        response_with_error(response) := msg if {
-          count(response.errors) > 0
-          msg = sprintf("Error validating one or more images: %s", response.errors)
-        }
-
-        # Ratify verifier validation
+        # check responses
         response_with_error(response) := msg if {
           subject_results := response.responses[_]
           subject := subject_results[0]
           result := subject_results[1]
-          msg := signature_validation(result, subject)
+          reports := result.verifierReports
+          msg := eval_ratify_response(reports, subject)
         }
 
-        # signature validation
-        signature_validation(result, subject) := msg if {
-          notaryv2_results := [res | result.verifierReports[i].isSuccess == true; result.verifierReports[i].name == "notaryv2"; result.verifierReports[i].extensions.Issuer == input.parameters.issuer; res := result.verifierReports[i]]
-          success_count := count(notaryv2_results)
-          success_count == 0
-          msg := sprintf("Subject %s failed signature validation", [subject])
+        eval_ratify_response(reports, subject) := artifactMsg if {
+          lacks_referrers(reports)
+          artifactMsg := sprintf("Subject %s lacks referrers", [subject])
+        } else := artifactMsg if {
+          lacks_signature(reports)
+          artifactMsg := sprintf("Subject %s lacks a signature", [subject])
+        } else := artifactMsg if { 
+          not has_trusted_signature(reports)
+          artifactMsg := sprintf("Subject %s failed signature validation", [subject])
+        }
+
+        has_trusted_signature(reports) {
+          some report in reports
+            report.artifactType == "application/vnd.cncf.notary.signature"
+            report.type == "notation"
+            report.extensions.Issuer == input.parameters.issuer
+            report.isSuccess == true
+        }
+
+        lacks_referrers(reports) {
+          every report in reports {
+            report.isSuccess == false
+            contains(report.message, "REFERRERS_NOT_FOUND")
+          }
+        }
+
+        lacks_signature(reports) {
+          every report in reports {
+            report.artifactType != "application/vnd.cncf.notary.signature"
+            report.type != "notation"
+          }
         }

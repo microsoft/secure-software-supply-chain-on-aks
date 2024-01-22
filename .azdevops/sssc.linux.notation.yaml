@@ -64,7 +64,7 @@ jobs:
             -NamespaceUriBase https://www.microsoft.com \
             -DeleteManifestDirIfPresent true
 
-        oras attach --artifact-type application/org.example.sbom.v0 $IMAGE_PATH ./_manifest/spdx_2.2/manifest.spdx.json:application/spdx+json
+        oras attach  --distribution-spec v1.1-referrers-tag --artifact-type application/spdx+json $IMAGE_PATH ./_manifest/spdx_2.2/manifest.spdx.json:application/spdx+json
 
   - task: AzureCLI@2
     displayName: "Run & Attach Vulnerability Scan Results"
@@ -75,7 +75,7 @@ jobs:
       scriptLocation: inlineScript
       inlineScript: |
         trivy fs --format sarif --output trivy_scan_results.json .
-        oras attach --artifact-type application/trivy+json $IMAGE_PATH trivy_scan_results.json:application/sarif+json
+        oras attach  --distribution-spec v1.1-referrers-tag --artifact-type application/sarif+json $IMAGE_PATH trivy_scan_results.json:application/sarif+json
     env:
       IMAGE_REPO: localhost:5000/$(SIGNED_APP_NAME)
 
@@ -87,8 +87,8 @@ jobs:
       scriptLocation: inlineScript
       inlineScript: |
         notation sign --signature-format cose --key default $IMAGE_PATH
-        notation sign --signature-format cose $IMAGE_REPO@$(oras discover -o json --artifact-type application/org.example.sbom.v0 $IMAGE_PATH | jq -r ".manifests[0].digest") --key default
-        notation sign --signature-format cose $IMAGE_REPO@$(oras discover -o json --artifact-type application/trivy+json $IMAGE_PATH | jq -r ".manifests[0].digest") --key default
+        notation sign --signature-format cose --key default $IMAGE_REPO@$(oras discover -o json --artifact-type application/spdx+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest") 
+        notation sign --signature-format cose --key default $IMAGE_REPO@$(oras discover -o json --artifact-type application/sarif+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest")
     env:
       IMAGE_REPO: localhost:5000/$(SIGNED_APP_NAME)
 

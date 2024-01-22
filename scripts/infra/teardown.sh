@@ -57,6 +57,9 @@ if [[ -n $PROJECT_NAME ]]; then
 
         print_style "\nVARIABLE GROUPS:\n" warning
         az pipelines variable-group list -o tsv --only-show-errors | { grep "$PROJECT_NAME" || true; } | awk '{print $6}'
+
+        print_style "\nSERVICE CONNECTIONS:\n" warning
+        az devops service-endpoint list -o tsv --only-show-errors | { grep "$PROJECT_NAME" || true; } | awk '{print $7}'
     elif [ "$CI_CD_PLATFORM" == "github" ]; then
         print_style "\nGitHub ENVIRONMENTS:\n" warning
         gh api -H "Accept: application/vnd.github+json" -H \
@@ -65,9 +68,6 @@ if [[ -n $PROJECT_NAME ]]; then
                 echo $name
             done
     fi
-
-    print_style "\nSERVICE CONNECTIONS:\n" warning
-    az devops service-endpoint list -o tsv --only-show-errors | { grep "$PROJECT_NAME" || true; } | awk '{print $7}'
 
     print_style "\nRESOURCE GROUPS:\n" warning
     az group list --query "[?contains(name,'$PROJECT_NAME') && !contains(name,'MC_')].name" -o tsv

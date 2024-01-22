@@ -26,5 +26,7 @@ export GITHUB_TOKEN=<token>
 To login using the gh CLI and ensure scopes are properly set, run the following command with will logout, re-login, and clear GITHUB_TOKEN env variable.
 
 ```bash
-gh auth logout && GITHUB_TOKEN= && gh auth login -w
+gh auth logout
+GITHUB_TOKEN=
+gh auth login -w
 ```

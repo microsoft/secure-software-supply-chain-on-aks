@@ -24,7 +24,9 @@ spec:
     - target: admission.k8s.gatekeeper.sh
       rego: |
         package trivyscanverification
-        import future.keywords
+        import future.keywords.if
+        import future.keywords.in
+        import future.keywords.every
         
         violation[{"msg": msg}] {
           # Get data from Ratify
@@ -34,99 +36,72 @@ spec:
           msg := response_with_error(response)
         }
 
-        # check for system errors
+        # check for errors
         response_with_error(response) := msg if {
-          err := response.system_error
-          err != ""
-          msg := sprintf("System error calling external data provider: %s", err)
-        }
-
-        # check for Ratify execution errors
-        response_with_error(response) := msg if {
-          count(response.errors) > 0
-          msg = sprintf("Error validating one or more images: %s", response.errors)
+          errors := response.errors[_]
+          subject := errors[0]
+          err := errors[1]
+          msg := sprintf("Failed evaluation of subject %s: %s", [subject, err])
         }
 
         # Ratify verifier validation
         response_with_error(response) := msg if {
           subject_results := response.responses[_]
           subject := subject_results[0]
-          result := subject_results[1].verifierReports
-          msg := verifier_validation(result, subject)
+          result := subject_results[1]
+          reports := result.verifierReports
+          msg := eval_ratify_response(reports, subject)
+        }
+        
+        eval_ratify_response(reports, subject) := artifactMsg if {
+          lacks_referrers(reports)
+          artifactMsg := sprintf("Subject %s lacks referrers", [subject])
+        } else := artifactMsg if {
+          lacks_sarif_vulnscan(reports)
+          artifactMsg := sprintf("Subject %s lacks a SARIF vulnerability scan result", [subject])
+        } else := artifactMsg if {
+          failed_schema_validation(reports)
+          artifactMsg := sprintf("Subject %s has an invalid SARIF vulnerability scan result", [subject])
+        } else := artifactMsg if {
+          not has_vulnscan_with_trusted_signature(reports)
+          artifactMsg := sprintf("Subject %s lacks a SARIF vulnerability scan result with a trusted signature", [subject])
         }
 
-        verifier_validation(result, subject) := artifactMsg if {
-          # no schemavalidator verifier results for the artifact type
-          verifier_results := [res |
-            result[i].name == "schemavalidator"
-            result[i].artifactType == "application/trivy+json"
-            res := result[i]
-            ]
-          count(verifier_results) == 0
-          artifactMsg := sprintf("Subject %s failed as no Trivy scan results were found", [subject])
-        } else := artifactMsg if {
-          # no successful schemavalidator verifier results for the artifact type
-          verifier_results := [res |
-            result[i].name == "schemavalidator"
-            result[i].artifactType == "application/trivy+json"
-            result[i].isSuccess == false
-            res := result[i].message
-          ]
-          count(verifier_results) > 0
-          artifactMsg := sprintf("Subject %s failed as Trivy scan result(s) were invalid: %s", [subject, verifier_results])
-        } else := artifactMsg if {
-          # successful schemavalidator results for the artifact type lack nested results
-          nested_results := [res |
-            result[i].name == "schemavalidator"
-            result[i].artifactType == "application/trivy+json"
-            result[i].isSuccess == true
-            res := result[i].nestedResults
-          ]
-          count({n | nested_results[n]}) == 0
-          artifactMsg := sprintf("Subject %s failed as the Trivy scan result lacks nested artifacts", [subject])
-        } else := artifactMsg if {
-          # successful schemavalidator results for the artifact type lack signatures
-          nested_results := [res |
-            result[i].name == "schemavalidator"
-            result[i].artifactType == "application/trivy+json"
-            result[i].isSuccess == true
-            res := result[i].nestedResults
-          ]
-          signatures := [s |
-            nested_results[x][j].name == "notaryv2"
-            s := nested_results[x][j]
-          ]
-          count(signatures) == 0
-          artifactMsg := sprintf("Subject %s failed as the Trivy scan result lacks a signature", [subject])
-        } else := artifactMsg if {
-          # successful schemavalidator results for the artifact type lack successful signatures
-          nested_results := [res |
-            result[i].name == "schemavalidator"
-            result[i].artifactType == "application/trivy+json"
-            result[i].isSuccess == true
-            res := result[i].nestedResults
-          ]
-          failed_signatures := [notation |
-            nested_results[x][s].name == "notaryv2"
-            nested_results[x][s].isSuccess == false
-            notation := nested_results[x][s].message
-          ]
-          count(failed_signatures) > 0
-          artifactMsg := sprintf("Subject %s failed as Trivy scan's signature(s) failed validation: %s", [subject, failed_signatures])
-        } else := artifactMsg if {
-          # successful schemavalidator results for the artifact type lack successful signatures from the correct issuer
-          nested_results := [res |
-            result[i].name == "schemavalidator"
-            result[i].artifactType == "application/trivy+json"
-            result[i].isSuccess == true
-            res := result[i].nestedResults
-          ]
-          invalid_signature_issuer := [notation |
-            nested_results[x][s].name == "notaryv2"
-            nested_results[x][s].isSuccess == true
-            nested_results[x][s].extensions.Issuer != input.parameters.issuer
-            notation := nested_results[x][s].extensions.Issuer
-          ]
-          count(invalid_signature_issuer) > 0
-          artifactMsg := sprintf("Subject %s failed as Trivy scan's signature(s) issuers did not match expected (%s): %s", [subject, input.parameters.issuer, invalid_signature_issuer])
+        lacks_referrers(reports) {
+          every report in reports {
+            report.isSuccess == false
+            contains(report.message, "REFERRERS_NOT_FOUND")
+          }
         }
+
+        lacks_sarif_vulnscan(reports) {
+           every report in reports {
+            report.artifactType != "application/sarif+json"
+            report.type != "schemavalidator"
+          }
+        }
+
+        failed_schema_validation(reports) {
+          some report in reports
+            report.type == "schemavalidator"
+            report.artifactType == "application/sarif+json"
+            report.isSuccess == false
+        }
+
+        has_vulnscan_with_trusted_signature(reports) {
+          some report in reports
+            report.artifactType == "application/sarif+json"
+            report.type == "schemavalidator"
+            report.isSuccess == true
+            nested := report.nestedResults
+            count(nested) > 0
+            signature_nested_result(nested)
+        }
+
+        signature_nested_result(nested) {
+          some n in nested
+            n.artifactType == "application/vnd.cncf.notary.signature"
+            n.type == "notation"
+            n.isSuccess == true
+            n.extensions.Issuer == input.parameters.issuer
+        } 

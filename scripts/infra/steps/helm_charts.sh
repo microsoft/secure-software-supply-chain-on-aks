@@ -59,12 +59,15 @@ if ! helm status -n gatekeeper-system gatekeeper 2>/dev/null; then
     helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
     helm repo update gatekeeper
 
-    helm install gatekeeper gatekeeper/gatekeeper  \
-    --version $GATEKEEPER_VERSION \
-    --namespace gatekeeper-system --create-namespace \
-    --set enableExternalData=true \
-    --set validatingWebhookTimeoutSeconds=5 \
-    --set mutatingWebhookTimeoutSeconds=2
+    helm install gatekeeper/gatekeeper  \
+      --version $GATEKEEPER_VERSION \
+      --name-template=gatekeeper \
+      --namespace gatekeeper-system --create-namespace \
+      --set enableExternalData=true \
+      --set validatingWebhookTimeoutSeconds=5 \
+      --set mutatingWebhookTimeoutSeconds=2 \
+      --set externaldataProviderResponseCacheTTL=10s
+
 else
     print_style "Using existing resource: Gatekeeper" info
 fi
@@ -75,14 +78,14 @@ if ! helm status -n gatekeeper-system ratify 2>/dev/null; then
     helm repo add ratify https://deislabs.github.io/ratify
     helm repo update ratify
 
-    helm install ratify \
-    ratify/ratify --atomic \
+    helm install ratify ratify/ratify --atomic \
     --namespace gatekeeper-system --create-namespace \
     --version=$RATIFY_VERSION \
     --set gatekeeper.version=$GATEKEEPER_VERSION \
+    --set featureFlags.RATIFY_CERT_ROTATION=true \
     --set azureWorkloadIdentity.clientId=$RATIFY_CLIENT_ID \
-    --set oras.authProviders.azureWorkloadIdentityEnabled=true \
-    --set-file notaryCert=./scripts/certs/ca.crt
+    --set oras.authProviders.azureWorkloadIdentityEnabled=true
+
 else
     print_style "Using existing resource: Ratify" info
 fi

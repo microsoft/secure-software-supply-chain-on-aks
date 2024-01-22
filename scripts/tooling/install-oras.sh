@@ -31,7 +31,7 @@ set -uo pipefail
 
 ORAS_TOOLING_PATH=/usr/local/bin
 ARCH=linux_amd64
-ORAS_VERSION=1.0.0
+ORAS_VERSION=1.1.0
 
 # download oras CLI
 ORAS_TAR_FILE=oras_$ORAS_VERSION\_$ARCH.tar.gz

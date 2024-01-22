@@ -32,8 +32,8 @@ set -euo pipefail
 NOTATION_TOOLING_PATH=/usr/local/bin
 AKV_TOOLING_PATH="${HOME}/.config/notation/plugins/azure-kv"
 ARCH=linux_amd64
-AKV_PLUGIN_VERSION=0.6.0
-NOTATION_VERSION=1.0.0-rc.7
+AKV_PLUGIN_VERSION=1.0.1
+NOTATION_VERSION=1.0.1
 
 # download Notation CLI
 NOTATION_TAR_FILE=notation_$NOTATION_VERSION\_$ARCH.tar.gz

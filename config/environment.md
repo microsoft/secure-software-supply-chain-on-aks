@@ -139,9 +139,9 @@ It must be set in "sssc.config" when `CI_CD_PLATFORM` is "ado" ![Azure Pipelines
 The version of Kubernetes that AKS should be running.
 
 > [!IMPORTANT]
-> Ratify is compatible with certain versions of Kubernetes. Keep this in mind if changing from the provided default.
+> Ratify is compatible with Kubernetes v1.20 or higher. Keep this in mind if changing from the provided default.
 
-There is an option to set in "sssc.config". If not provided, "1.26.3" will used.
+There is an option to set in "sssc.config". If not provided, "1.27.7" will used.
 
 **Script references**:
 
@@ -151,12 +151,12 @@ There is an option to set in "sssc.config". If not provided, "1.26.3" will used.
 
 ## GATEKEEPER_VERSION
 
-The Helm chart version of Gatekeeper to be deployed. _This may or may not align one-for-one for GitHub releases._
+The Helm chart version of Gatekeeper to be deployed. _Helm chart versions and GitHub releases are one-to-one._
 
 > [!IMPORTANT]
-> Ratify is compatible with certain versions of Gatekeeper. Keep this in mind if changing from the provided default.
+> Ratify is compatible with OPA Gatekeeper v3.10 or higher. Keep this in mind if changing from the provided default.
 
-There is an option to set in "sssc.config". If not provided, "3.11.0" will used.
+There is an option to set in "sssc.config". If not provided, "3.14.0" will used.
 
 **Script references**:
 
@@ -166,9 +166,9 @@ There is an option to set in "sssc.config". If not provided, "3.11.0" will used.
 
 ## RATIFY_VERSION
 
-The Helm chart version of Ratify to be deployed. _This may or may not align one-for-one for GitHub releases._
+The Helm chart version of Ratify to be deployed. _The Helm chart version will probably not match the applicable GitHub release._
 
-There is an option to set in "sssc.config". If not provided, "1.7.0" will be used.
+There is an option to set in "sssc.config". If not provided, "1.12.0" will be used.
 
 **Script references**:
 

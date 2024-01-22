@@ -25,6 +25,8 @@ spec:
       rego: |
         package sbomverification
         import future.keywords.if
+        import future.keywords.in
+        import future.keywords.every
         
         violation[{"msg": msg}] {
           # Get data from Ratify
@@ -34,93 +36,72 @@ spec:
           msg := response_with_error(response)
         }
 
-        # check for system errors
+        # check for errors
         response_with_error(response) := msg if {
-          err := response.system_error
-          err != ""
-          msg := sprintf("System error calling external data provider: %s", err)
+          errors := response.errors[_]
+          subject := errors[0]
+          err := errors[1]
+          msg := sprintf("Failed evaluation of subject %s: %s", [subject, err])
         }
 
-        # check for Ratify execution errors
-        response_with_error(response) := msg if {
-          count(response.errors) > 0
-          msg = sprintf("Error validating one or more images: %s", response.errors)
-        }
-
-        # Ratify verifier validation
+        # check responses
         response_with_error(response) := msg if {
           subject_results := response.responses[_]
           subject := subject_results[0]
-          result := subject_results[1].verifierReports
-          msg := verifier_validation(result, subject)
+          result := subject_results[1]
+          reports := result.verifierReports
+          msg := eval_ratify_response(reports, subject)
         }
-        
-        verifier_validation(result, subject) := artifactMsg if {
-          # no SBOM verifier results for the artifact type
-          verifier_results := [res |
-            result[i].name == "sbom"
-            res := result[i]
-            ]
-          count(verifier_results) == 0
-          artifactMsg := sprintf("Subject %s failed as no SBOMs were found", [subject])
+
+        eval_ratify_response(reports, subject) := artifactMsg if {
+          lacks_referrers(reports)
+          artifactMsg := sprintf("Subject %s lacks referrers", [subject])
         } else := artifactMsg if {
-          # no successful sbom verifier results
-          verifier_results := [res |
-            result[i].name == "sbom"
-            result[i].isSuccess == false
-            res := result[i].message
-          ]
-          count(verifier_results) > 0
-          artifactMsg := sprintf("Subject %s failed as SBOM(s) were invalid: %s", [subject, verifier_results])
+          lacks_sbom(reports)
+          artifactMsg := sprintf("Subject %s lacks an SBOM", [subject])
         } else := artifactMsg if {
-          # successful sbom results for the artifact type lack nested results
-          nested_results := [res |
-            result[i].name == "sbom"
-            result[i].isSuccess == true
-            res := result[i].nestedResults
-          ]
-          count({n | nested_results[n]}) == 0
-          artifactMsg := sprintf("Subject %s failed as the SBOM lacks nested artifacts", [subject])
+          failed_sbom_validation(reports)
+          artifactMsg := sprintf("Subject %s has an invalid SBOM", [subject])
         } else := artifactMsg if {
-          # successful sbom results for the artifact type lack signatures
-          nested_results := [res |
-            result[i].name == "sbom"
-            result[i].isSuccess == true
-            res := result[i].nestedResults
-          ]
-          signatures := [s |
-            nested_results[x][j].name == "notaryv2"
-            s := nested_results[x][j]
-          ]
-          count(signatures) == 0
-          artifactMsg := sprintf("Subject %s failed as the SBOM lacks a signature", [subject])
-        } else := artifactMsg if {
-          # successful sbom results lack successful signatures
-          nested_results := [res |
-            result[i].name == "sbom"
-            result[i].isSuccess == true
-            res := result[i].nestedResults
-          ]
-          failed_signatures := [notation |
-            nested_results[x][s].name == "notaryv2"
-            nested_results[x][s].isSuccess == false
-            notation := nested_results[x][s].message
-          ]
-          count(failed_signatures) > 0
-          artifactMsg := sprintf("Subject %s failed as SBOM's signature(s) failed validation: %s", [subject, failed_signatures])
-        } else := artifactMsg if {
-          # successful sbom results for the artifact type lack successful signatures from the correct issuer
-          nested_results := [res |
-            result[i].name == "sbom"
-            result[i].isSuccess == true
-            res := result[i].nestedResults
-          ]
-          invalid_signature_issuer := [notation |
-            nested_results[x][s].name == "notaryv2"
-            nested_results[x][s].isSuccess == true
-            nested_results[x][s].extensions.Issuer != input.parameters.issuer
-            notation := nested_results[x][s].extensions.Issuer
-          ]
-          count(invalid_signature_issuer) > 0
-          artifactMsg := sprintf("Subject %s failed as SBOM's signature(s) issuers did not match expected (%s): %s", [subject, input.parameters.issuer, invalid_signature_issuer])
+          not has_sbom_with_trusted_signature(reports)
+          artifactMsg := sprintf("Subject %s lacks an SBOM with a trusted signature", [subject])
+        }
+
+        lacks_referrers(reports) {
+          every report in reports {
+            report.isSuccess == false
+            contains(report.message, "REFERRERS_NOT_FOUND")
+          }
+        }
+
+        lacks_sbom(reports) {
+           every report in reports {
+            report.artifactType != "application/spdx+json"
+            report.type != "sbom"
+          }
+        }
+
+        failed_sbom_validation(reports) {
+          some report in reports
+            report.type == "sbom"
+            report.artifactType == "application/spdx+json"
+            report.isSuccess == false
+        }
+
+        has_sbom_with_trusted_signature(reports) {
+          some report in reports
+            report.artifactType == "application/spdx+json"
+            report.type == "sbom"
+            report.isSuccess == true
+            nested := report.nestedResults
+            count(nested) > 0
+            signature_nested_result(nested)
+        }
+
+        signature_nested_result(nested) {
+          some n in nested
+            n.artifactType == "application/vnd.cncf.notary.signature"
+            n.type == "notation"
+            n.isSuccess == true
+            n.extensions.Issuer == input.parameters.issuer
         }

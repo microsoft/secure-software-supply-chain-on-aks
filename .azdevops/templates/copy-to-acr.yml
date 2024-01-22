@@ -20,7 +20,7 @@ steps:
     scriptType: bash
     scriptLocation: inlineScript
     inlineScript: az acr login --name ${{ parameters.acrName }}
-- bash: oras copy ${IMAGE_PATH} ${REMOTE_IMAGE_TAG} --recursive
+- bash: oras cp -r --from-distribution-spec v1.1-referrers-tag --to-distribution-spec v1.1-referrers-tag ${IMAGE_PATH} ${REMOTE_IMAGE_TAG}
   displayName: "Copy to ACR"
   env:
     IMAGE_PATH: ${{ parameters.localImage }}

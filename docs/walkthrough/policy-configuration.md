@@ -8,16 +8,21 @@ A core facet of securing the software supply chain is policy enforcement. This c
 
 ## Configure Ratify
 
-In addition to the built-in support to verify Notation signatures, Ratify provides a plugin framework for additional verifiers. These verifiers can be configured via the [Ratify custom resource](https://ratify.dev/docs/1.0.0-rc.6/ratify-configuration#crds).
+Ratify ships with three verifiers which can be configured via the [Ratify custom resource](https://ratify.dev/docs/ratify-configuration#crds).
 
-For verification of SPDX SBOMs, Ratify provides an [SBOM verifier CRD](https://ratify.dev/docs/1.0.0-rc.6/reference/crds/verifiers#sbom). The [CRD](../../policy/ratify/verifier-sbom.yaml) to be applied has an artifact type of `application/org.example.sbom.v0`. As the SBOM must be signed, the optional parameter `nestedReferences` is provided with the Notation signature artifact type: `application/vnd.cncf.notary.signature`.
+There is a default configuration [CRD for Notation signature verification](https://ratify.dev/docs/reference/crds/verifiers/#notation) that installs as a part of the Helm chart install of Ratify. This configuration lacks certificates within the `verificationCertStores` parameter. The [Notary Project's trust store specification](https://github.com/notaryproject/specifications/blob/main/specs/trust-store-trust-policy.md#trust-store) allows verification with a root x509 certificate. The root CA certificate created during infrastructure provisioning is what will be used to verify the signatures for the image, SBOM and vulnerability scan result. An Inline Certificate Provider CRD must be created with the contents of the certificate by executing the following:
 
-Ratify also ships with a generic [JSON schema validation verifier](https://github.com/deislabs/ratify/blob/main/plugins/verifier/schemavalidator/README.md). It accepts a parameter named `schema`. This parameter is a list of key/value pairs where the key is an IANA media type and the value is the URL for the expected schema definition. The [CRD](../../policy/ratify/verifier-vulnscanresult.trivy.yaml) to be applied is intended to validate that there is a valid SARIF vulnerability scan result for artifacts of type `application/trivy+json`. The configured schema pairs media type `application/sarif+json` with the schema found at [https://json.schemastore.org/sarif-2.1.0-rtm.5.json](https://json.schemastore.org/sarif-2.1.0-rtm.5.json).
+```bash
+./scripts/certs/create_certstore_with_ca.sh
+```
 
-> [!NOTE]
-> As described in Ratify's documentation, CRDs can be used to override configuration set in the built-in JSON configuration file. This means a verifier CRD could be included to configure the built-in Notation verifier. At this time, however, the Notation CRD included in the Ratify Helm chart is used and, thus, that verifier is configured as a part of Ratify deployment.
+The updated [Notation CRD](../../policy/ratify/verifier-signature.notation.yaml) references the cert. store created named `certstore-inline`.
 
-Execution of the following will apply the above-described Ratify verifier CRDs:
+For verification of SPDX SBOMs, Ratify provides an [SBOM verifier CRD](https://ratify.dev/docs/reference/crds/verifiers/#sbom). The [CRD](../../policy/ratify/verifier-sbom.yaml) to be applied has an artifact type of `application/org.example.sbom.v0`. As the SBOM must be signed, the optional parameter `nestedReferences` is provided with the Notation signature artifact type: `application/vnd.cncf.notary.signature`.
+
+Ratify also ships with a generic [JSON schema validator CRD](https://ratify.dev/docs/reference/crds/verifiers/#schemavalidator). It accepts a parameter named `schema`. This parameter is a list of key/value pairs where the key is an IANA media type and the value is the URL for the expected schema definition. The [CRD](../../policy/ratify/verifier-vulnscanresult.trivy.yaml) to be applied is intended to validate that there is a valid SARIF vulnerability scan result for artifacts of type `application/trivy+json`. The configured schema pairs media type `application/sarif+json` with the schema found at [https://json.schemastore.org/sarif-2.1.0-rtm.5.json](https://json.schemastore.org/sarif-2.1.0-rtm.5.json).
+
+Execution of the following will apply the Ratify certificate provider CRD and three above-described verifier CRDs:
 
 ```bash
 ./scripts/policy/apply_ratify_crds.sh

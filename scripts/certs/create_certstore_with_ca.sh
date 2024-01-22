@@ -16,32 +16,33 @@
 # CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 
-#######################################################
-# Apply Ratify CRDs
-#######################################################
+#####################################################################
+# Create a certificate store CRD with the contents of the ca.crt file
+#####################################################################
 
 #########################
 # ENV VARIABLES: NONE
 #########################
 
 set -o errexit
-set -o pipefail
 set -o nounset
 
 # For debugging
 # set -o xtrace 
 
-# used for pretty printing to terminal
-. ./scripts/helper/common.sh
+export certstore_yaml="./policy/ratify/notation-certificatestore.yaml"
 
-print_style "Apply Ratify Certificate Store CRD with inline CA certificate" info
-kubectl apply -f ./policy/ratify/notation-certificatestore.yaml
-
-print_style "Apply Ratify Verifier CRD to update Notation signature verifier" info
-kubectl apply -f ./policy/ratify/verifier-signature.notation.yaml
-
-print_style "Apply Ratify Verifier CRD to configure SBOM verifier" info
-kubectl apply -f ./policy/ratify/verifier-sbom.yaml
-
-print_style "Apply Ratify Verifier CRD to configure JSON Schema Validator verifier for Trivy vulnerability scan results" info
-kubectl apply -f ./policy/ratify/verifier-vulnscanresult.trivy.yaml
+cat <<EOF > $certstore_yaml
+apiVersion: config.ratify.deislabs.io/v1beta1
+kind: CertificateStore
+metadata:
+  name: certstore-inline
+  namespace: gatekeeper-system
+spec:
+  provider: inline
+  parameters:
+    value: |
+$(while IFS= read -r line; do
+    echo "      $line" 
+done < "./scripts/certs/ca.crt")
+EOF
