@@ -412,6 +412,7 @@ config/*.config
 config/*.json
 
 policy/ratify/notation-certificatestore.yaml
+policy/ratify/verifier-signature.notation.yaml
 
 # file for local work / testing
 scratch*.txt

@@ -17,38 +17,26 @@
 # DEALINGS IN THE SOFTWARE.
 
 #######################################################
-# Install preview features used for workload identity in AKS
+# Download and install Microsoft's sbom-tool
+#
+# Prerequisites:
+# - 
 #######################################################
 
 #########################
 # ENV VARIABLES: NONE
 #########################
 
-set -o errexit
-set -o pipefail
-set -o nounset
+set -uo pipefail
 
-# For debugging
-# set -o xtrace
+SBOM_TOOLING_PATH=/usr/local/bin
+ARCH=linux-x64
+SBOM_TOOL_VERSION=2.2.4
 
-# used for working with the env file
-. ./scripts/helper/env.sh
+# download SBOM Tool
+SBOM_DL_FILE=sbom-tool-$ARCH
+curl -Lo sbom-tool https://github.com/microsoft/sbom-tool/releases/download/v$SBOM_TOOL_VERSION/$SBOM_DL_FILE
 
-# used for pretty printing to terminal
-. ./scripts/helper/common.sh
-
-# Enable `EnableWorkloadIdentityPreview` feature. It may take ~10 minutes to register.
-if [ $(az feature list -o tsv --query "[?contains(name, 'Microsoft.ContainerService/EnableWorkloadIdentityPreview')].properties.state") != "Registered" ]
-then
-    print_block_header "Registering preview features" info
-    az feature register --namespace "Microsoft.ContainerService" --name "EnableWorkloadIdentityPreview"
-
-    # Check registration status for the feature `EnableWorkloadIdentityPreview` and wait until registration is complete
-    while [ $(az feature list -o tsv --query "[?contains(name, 'Microsoft.ContainerService/EnableWorkloadIdentityPreview')].properties.state") != "Registered" ]
-    do
-        echo "Waiting for Workload Identity feature registration..."
-        sleep 20
-    done
-
-    az provider register --namespace "Microsoft.ContainerService"
-fi
+# Install SBOM tool
+chmod +x sbom-tool
+mv sbom-tool $SBOM_TOOLING_PATH

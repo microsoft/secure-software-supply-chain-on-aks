@@ -12,9 +12,9 @@
 
 [Gatekeeper](https://open-policy-agent.github.io/gatekeeper/website/) is a Kubernetes-native policy controller. By hooking into the Kubernetes [validating and mutating](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/), it enforces polices using [Open Policy Agent](https://www.openpolicyagent.org/).
 
-## Key Vault
+## Azure Key Vault
 
-[Key Vault](https://azure.microsoft.com/en-us/products/key-vault/) is Azure's offering for cryptographic key managemenet.
+[Azure Key Vault](https://azure.microsoft.com/en-us/products/key-vault/) is Azure's offering for cryptographic key managemenet.
 
 ## Microsoft SBOM Tool
 

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       environment_name:
-        description: 'Environment name'
+        description: "Environment name"
         required: true
         default: ssscsample
         type: string
@@ -16,121 +16,171 @@ on:
 env:
   ACR_NAME: ${{ vars.ACR_NAME }}
   ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
-  RESOURCE_GROUP: ${{ vars.RESOURCE_GROUP }}
   SIGNING_KEY_ID: ${{ vars.SIGNING_KEY_ID }}
-  SIGNED_APP_NAME: trips
-  UNSIGNED_APP_NAME: poi
-  IMAGE_TAG: v1
+  ALT_SIGNING_KEY_ID: ${{ vars.ALT_SIGNING_KEY_ID }}
   ORAS_VERSION: 1.1.0
+  NOTATION_VERSION: 1.1.0
 
 jobs:
-  signed:
-    name: "Build & Push Signed Image"
-    environment: 
+  trips:
+    name: "Build & push Trips"
+    environment:
       name: ${{ inputs.environment_name }}
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
-
-    services:
-      oci-registry:
-        image: ghcr.io/oras-project/registry@sha256:321aaa9de1049b3988a8cb7e4ae2043ec13df78bf140b5335b015823e9779da3 #v1.0.0-rc.4
-        ports:
-          - 5000:5000
-
     steps:
       - name: "Checkout GitHub Action"
         uses: actions/checkout@main
 
+      - name: "Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v3
+
       - name: "Login via Azure CLI"
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ secrets.ENTRA_APP_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: "Install Notation CLI"
-        run: ./scripts/tooling/install-notation.sh
+        uses: notaryproject/notation-action/setup@v1
+        with:
+          version: ${{ env.NOTATION_VERSION }}
 
       - name: "Install ORAS CLI"
         uses: oras-project/setup-oras@main
         with:
-          version: ${{env.ORAS_VERSION}}
+          version: ${{ env.ORAS_VERSION }}
 
       - name: "Install Microsoft SBOM Tool"
-        run: ./scripts/tooling/install-sbom-tool.sh
-
-      - name: "Install Trivy CLI"
-        run: ./scripts/tooling/install-trivy.sh
-
-      - name: "Build and push image to local registry"
-        id: BuildAndPush
-        working-directory: ${{ github.workspace }}/src/${{ env.SIGNED_APP_NAME }}
-        run: |
-          docker build -t $TAGGED_IMG .
-          docker push $TAGGED_IMG
-
-          IMAGE_PATH=$(docker image inspect --format='{{index .RepoDigests 0}}' $TAGGED_IMG)
-          IMAGE_DIGEST=$(echo $IMAGE_PATH | cut -d'@' -f2)
-
-          echo "IMAGE_PATH=$IMAGE_PATH" >> $GITHUB_ENV
-          echo "IMAGE_DIGEST=$IMAGE_DIGEST" >> $GITHUB_OUTPUT
-        env:
-          TAGGED_IMG: localhost:5000/${{ env.SIGNED_APP_NAME }}:${{ env.IMAGE_TAG }}
-
-      - name: "Add notation key"
-        run: notation key add default --id $SIGNING_KEY_ID --plugin azure-kv --plugin-config "as_secret"=true
-
-      - name: "Create & Attach SBOM"
-        run: |
-          sbom-tool generate \
-            -BuildDropPath ./src/$SIGNED_APP_NAME \
-            -BuildComponentPath ./src/$SIGNED_APP_NAME \
-            -PackageName pn \
-            -ManifestDirPath . \
-            -PackageVersion 1.0 \
-            -PackageSupplier $SIGNED_APP_NAME \
-            -NamespaceUriUniquePart $SIGNED_APP_NAME \
-            -NamespaceUriBase https://www.microsoft.com \
-            -DeleteManifestDirIfPresent true
-
-          oras attach  --distribution-spec v1.1-referrers-tag --artifact-type application/spdx+json $IMAGE_PATH ./_manifest/spdx_2.2/manifest.spdx.json:application/spdx+json
-
-      - name: "Run & Attach Vulnerability Scan Results"
-        run: |
-          trivy fs --format sarif --output trivy_scan_results.json ./src/$SIGNED_APP_NAME
-          oras attach --distribution-spec v1.1-referrers-tag --artifact-type application/sarif+json $IMAGE_PATH trivy_scan_results.json:application/sarif+json
-
-      - name: "Sign Artifacts"
-        run: |
-          notation sign --signature-format cose --key default $IMAGE_PATH
-          notation sign --signature-format cose --key default $IMAGE_REPO@$(oras discover -o json --artifact-type application/spdx+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest") 
-          notation sign --signature-format cose --key default $IMAGE_REPO@$(oras discover -o json --artifact-type application/sarif+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest")
-        env:
-          IMAGE_REPO: localhost:5000/${{ env.SIGNED_APP_NAME }}
+        run: ./scripts/tooling/install_sbom_tool.sh
 
       - name: "Login to ACR"
-        run: az acr login --name $ACR_NAME
+        id: acr
+        run: |
+          az acr login --name $ACR_NAME
+          TOKEN=$(az acr login --expose-token -n $ACR_NAME --query accessToken -o tsv)
+          echo "acr_token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: "Copy to ACR"
-        run: oras cp -r --from-distribution-spec v1.1-referrers-tag --to-distribution-spec v1.1-referrers-tag $IMAGE_PATH $ACR_LOGIN_SERVER/$SIGNED_APP_NAME:$IMAGE_TAG
+      - name: "Build and push image"
+        id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ github.workspace }}/src/trips
+          tags: ${{ env.ACR_LOGIN_SERVER }}/trips:v1
+          push: true
 
-  unsigned:
-    name: "Build & Push Unsigned Image"
+      - name: "Set IMAGE_PATH environment variable"
+        run: |
+          echo "IMAGE_PATH=$IMAGE_PATH" >> $GITHUB_ENV
+        env:
+          IMAGE_PATH: ${{ env.ACR_LOGIN_SERVER }}/trips@${{ steps.push.outputs.digest }}
+
+      - name: "Sign image"
+        uses: notaryproject/notation-action/sign@v1
+        with:
+          plugin_name: azure-kv
+          plugin_url: https://github.com/Azure/notation-azure-kv/releases/download/v1.0.2/notation-azure-kv_1.0.2_linux_amd64.tar.gz
+          plugin_checksum: f2b2e131a435b6a9742c202237b9aceda81859e6d4bd6242c2568ba556cee20e
+          key_id: ${{ env.SIGNING_KEY_ID }}
+          target_artifact_reference: ${{ env.IMAGE_PATH }}
+          signature_format: cose
+          plugin_config: |-
+            "as_secret"=true
+
+      - name: "Generate and attach SBOM to image"
+        id: sbom
+        working-directory: ./src/trips
+        run: |
+          docker pull $IMAGE_PATH
+          
+          sbom-tool generate \
+            -BuildDropPath . \
+            -BuildComponentPath . \
+            -BuildListFile ../empty-file-list.txt \
+            -DockerImagesToScan $IMAGE_PATH \
+            -PackageSupplier Trips \
+            -PackageName Trips \
+            -PackageVersion 1.0 \
+            -DeleteManifestDirIfPresent true \
+            -FetchLicenseInformation true \
+            -EnablePackageMetadataParsing true
+
+          oras attach  --distribution-spec v1.1-referrers-tag --artifact-type application/spdx+json $IMAGE_PATH ./_manifest/spdx_2.2/manifest.spdx.json:application/spdx+json
+          SBOM_DIGEST=$(oras discover -o json --artifact-type application/spdx+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest")
+          echo "digest=$SBOM_DIGEST" >> $GITHUB_OUTPUT
+        env:
+          IMAGE_PATH: ${{ env.IMAGE_PATH }}
+
+      - name: "Sign SBOM"
+        uses: notaryproject/notation-action/sign@v1
+        with:
+          plugin_name: azure-kv
+          plugin_url: https://github.com/Azure/notation-azure-kv/releases/download/v1.0.2/notation-azure-kv_1.0.2_linux_amd64.tar.gz
+          plugin_checksum: f2b2e131a435b6a9742c202237b9aceda81859e6d4bd6242c2568ba556cee20e
+          key_id: ${{ env.SIGNING_KEY_ID }}
+          target_artifact_reference: ${{ env.ACR_LOGIN_SERVER }}/trips@${{ steps.sbom.outputs.digest }}
+          signature_format: cose
+          plugin_config: |-
+            "as_secret"=true
+
+      - name: "Scan file system for vulnerabilities"
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: ./src/trips
+          scanners: vuln
+          format: "sarif"
+          output: "fs-trivy.sarif"
+
+      - name: "Scan image for vulnerabilities"
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ACR_LOGIN_SERVER }}/trips:v1
+          scanners: vuln
+          format: "sarif"
+          output: "img-trivy.sarif"
+        env:
+          TRIVY_USERNAME: "00000000-0000-0000-0000-000000000000"
+          TRIVY_PASSWORD: ${{ steps.acr.outputs.acr_token }}
+
+      - name: "Merge SARIF files"
+        uses: microsoft/sarif-actions@v0.1
+        with:
+          command: "merge fs-trivy.sarif img-trivy.sarif --output-file=trivy_scan_results.json"
+
+      - name: "Attach merged result to image"
+        id: vulnscan
+        run: |
+          current_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          oras attach --distribution-spec v1.1-referrers-tag --annotation "org.opencontainers.image.created=$current_date" --artifact-type application/sarif+json $IMAGE_PATH trivy_scan_results.json:application/sarif+json
+          TRIVY_DIGEST=$(oras discover -o json --artifact-type application/sarif+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest")
+          echo "digest=$TRIVY_DIGEST" >> $GITHUB_OUTPUT
+        env:
+          IMAGE_PATH: ${{ env.IMAGE_PATH }}
+
+      - name: "Sign vulnerability scan result"
+        uses: notaryproject/notation-action/sign@v1
+        with:
+          plugin_name: azure-kv
+          plugin_url: https://github.com/Azure/notation-azure-kv/releases/download/v1.0.2/notation-azure-kv_1.0.2_linux_amd64.tar.gz
+          plugin_checksum: f2b2e131a435b6a9742c202237b9aceda81859e6d4bd6242c2568ba556cee20e
+          key_id: ${{ env.SIGNING_KEY_ID }}
+          target_artifact_reference: ${{ env.ACR_LOGIN_SERVER }}/trips@${{ steps.vulnscan.outputs.digest }}
+          signature_format: cose
+          plugin_config: |-
+            "as_secret"=true
+
+  poi:
+    name: "Build & push POI"
     runs-on: ubuntu-latest
-    environment: 
+    environment:
       name: ${{ inputs.environment_name }}
     defaults:
       run:
         shell: bash
-
-    services:
-      oci-registry:
-        image: ghcr.io/oras-project/registry@sha256:321aaa9de1049b3988a8cb7e4ae2043ec13df78bf140b5335b015823e9779da3 #v1.0.0-rc.4
-        ports:
-          - 5000:5000
-
     steps:
       - name: "Checkout GitHub Action"
         uses: actions/checkout@main
@@ -138,32 +188,171 @@ jobs:
       - name: "Login via Azure CLI"
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ secrets.ENTRA_APP_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: "Login to ACR"
+        run: az acr login --name $ACR_NAME
+        env:
+          ACR_NAME: ${{ env.ACR_NAME }}
+
+      - name: "Build and push image"
+        id: BuildAndPush
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ github.workspace }}/src/poi
+          tags: ${{ env.ACR_LOGIN_SERVER }}/poi:v1
+          push: true
+
+  userprofile:
+    name: "Build & push User Profile"
+    environment:
+      name: ${{ inputs.environment_name }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: "Checkout GitHub Action"
+        uses: actions/checkout@main
+
+      - name: "Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v3
+
+      - name: "Login via Azure CLI"
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.ENTRA_APP_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: "Install Notation CLI"
+        uses: notaryproject/notation-action/setup@v1
+        with:
+          version: ${{ env.NOTATION_VERSION }}
 
       - name: "Install ORAS CLI"
         uses: oras-project/setup-oras@main
         with:
-          version: ${{env.ORAS_VERSION}}
+          version: ${{ env.ORAS_VERSION }}
 
-      - name: "Build and push image to local registry"
-        id: BuildAndPush
-        working-directory: ${{ github.workspace }}/src/${{ env.UNSIGNED_APP_NAME }}
-        run: |
-          docker build -t $TAGGED_IMG .
-          docker push $TAGGED_IMG
-
-          IMAGE_PATH=$(docker image inspect --format='{{index .RepoDigests 0}}' $TAGGED_IMG)
-          IMAGE_DIGEST=$(echo $IMAGE_PATH | cut -d'@' -f2)
-
-          echo "IMAGE_PATH=$IMAGE_PATH" >> $GITHUB_ENV
-          echo "IMAGE_DIGEST=$IMAGE_DIGEST" >> $GITHUB_OUTPUT
-        env:
-          TAGGED_IMG: localhost:5000/${{ env.UNSIGNED_APP_NAME }}:${{ env.IMAGE_TAG }}
+      - name: "Install Microsoft SBOM Tool"
+        run: ./scripts/tooling/install_sbom_tool.sh
 
       - name: "Login to ACR"
-        run: az acr login --name $ACR_NAME
+        id: acr
+        run: |
+          az acr login --name $ACR_NAME
+          TOKEN=$(az acr login --expose-token -n $ACR_NAME --query accessToken -o tsv)
+          echo "acr_token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: "Copy to ACR"
-        run: oras cp -r --from-distribution-spec v1.1-referrers-tag --to-distribution-spec v1.1-referrers-tag $IMAGE_PATH $ACR_LOGIN_SERVER/$UNSIGNED_APP_NAME:$IMAGE_TAG
+      - name: "Build and push image"
+        id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ github.workspace }}/src/userprofile
+          tags: ${{ env.ACR_LOGIN_SERVER }}/userprofile:v1
+          push: true
+
+      - name: "Set IMAGE_PATH environment variable"
+        run: |
+          echo "IMAGE_PATH=$IMAGE_PATH" >> $GITHUB_ENV
+        env:
+          IMAGE_PATH: ${{ env.ACR_LOGIN_SERVER }}/userprofile@${{ steps.push.outputs.digest }}
+
+      - name: "Sign image"
+        uses: notaryproject/notation-action/sign@v1
+        with:
+          plugin_name: azure-kv
+          plugin_url: https://github.com/Azure/notation-azure-kv/releases/download/v1.0.2/notation-azure-kv_1.0.2_linux_amd64.tar.gz
+          plugin_checksum: f2b2e131a435b6a9742c202237b9aceda81859e6d4bd6242c2568ba556cee20e
+          key_id: ${{ env.ALT_SIGNING_KEY_ID }}
+          target_artifact_reference: ${{ env.IMAGE_PATH }}
+          signature_format: cose
+          plugin_config: |-
+            "as_secret"=true
+
+      - name: "Generate and attach SBOM to image"
+        id: sbom
+        working-directory: ./src/userprofile
+        run: |
+          docker pull $IMAGE_PATH
+
+          sbom-tool generate \
+            -BuildDropPath . \
+            -BuildComponentPath . \
+            -BuildListFile ../empty-file-list.txt \
+            -DockerImagesToScan $IMAGE_PATH \
+            -PackageSupplier UserProfile \
+            -PackageName UserProfile \
+            -PackageVersion 1.0 \
+            -DeleteManifestDirIfPresent true \
+            -FetchLicenseInformation true \
+            -EnablePackageMetadataParsing true
+
+          oras attach  --distribution-spec v1.1-referrers-tag --artifact-type application/spdx+json $IMAGE_PATH ./_manifest/spdx_2.2/manifest.spdx.json:application/spdx+json
+          SBOM_DIGEST=$(oras discover -o json --artifact-type application/spdx+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest")
+          echo "digest=$SBOM_DIGEST" >> $GITHUB_OUTPUT
+        env:
+          IMAGE_PATH: ${{ env.IMAGE_PATH }}
+
+      - name: "Sign SBOM"
+        uses: notaryproject/notation-action/sign@v1
+        with:
+          plugin_name: azure-kv
+          plugin_url: https://github.com/Azure/notation-azure-kv/releases/download/v1.0.2/notation-azure-kv_1.0.2_linux_amd64.tar.gz
+          plugin_checksum: f2b2e131a435b6a9742c202237b9aceda81859e6d4bd6242c2568ba556cee20e
+          key_id: ${{ env.ALT_SIGNING_KEY_ID }}
+          target_artifact_reference: ${{ env.ACR_LOGIN_SERVER }}/userprofile@${{ steps.sbom.outputs.digest }}
+          signature_format: cose
+          plugin_config: |-
+            "as_secret"=true
+
+      - name: "Scan file system for vulnerabilities"
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: ./src/trips
+          scanners: vuln
+          format: "sarif"
+          output: "fs-trivy.sarif"
+
+      - name: "Scan image for vulnerabilities"
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ACR_LOGIN_SERVER }}/userprofile:v1
+          scanners: vuln
+          format: "sarif"
+          output: "img-trivy.sarif"
+        env:
+          TRIVY_USERNAME: "00000000-0000-0000-0000-000000000000"
+          TRIVY_PASSWORD: ${{ steps.acr.outputs.acr_token }}
+
+      - name: "Merge SARIF files"
+        uses: microsoft/sarif-actions@v0.1
+        with:
+          command: "merge fs-trivy.sarif img-trivy.sarif --output-file=trivy_scan_results.json"
+
+      - name: "Attach merged result to image"
+        id: vulnscan
+        run: |
+          now=$(date -u)
+          current_date=$(date --date="${now} -2 day" -u +'%Y-%m-%dT%H:%M:%SZ')
+          oras attach --distribution-spec v1.1-referrers-tag --annotation "org.opencontainers.image.created=$current_date" --artifact-type application/sarif+json $IMAGE_PATH trivy_scan_results.json:application/sarif+json
+          TRIVY_DIGEST=$(oras discover -o json --artifact-type application/sarif+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest")
+          echo "digest=$TRIVY_DIGEST" >> $GITHUB_OUTPUT
+        env:
+          IMAGE_PATH: ${{ env.IMAGE_PATH }}
+
+      - name: "Sign vulnerability scan result"
+        uses: notaryproject/notation-action/sign@v1
+        with:
+          plugin_name: azure-kv
+          plugin_url: https://github.com/Azure/notation-azure-kv/releases/download/v1.0.2/notation-azure-kv_1.0.2_linux_amd64.tar.gz
+          plugin_checksum: f2b2e131a435b6a9742c202237b9aceda81859e6d4bd6242c2568ba556cee20e
+          key_id: ${{ env.ALT_SIGNING_KEY_ID }}
+          target_artifact_reference: ${{ env.ACR_LOGIN_SERVER }}/userprofile@${{ steps.vulnscan.outputs.digest }}
+          signature_format: cose
+          plugin_config: |-
+            "as_secret"=true

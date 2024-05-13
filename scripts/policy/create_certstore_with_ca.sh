@@ -20,9 +20,9 @@
 # Create a certificate store CRD with the contents of the ca.crt file
 #####################################################################
 
-#########################
+#####################
 # ENV VARIABLES: NONE
-#########################
+#####################
 
 set -o errexit
 set -o nounset
@@ -31,6 +31,8 @@ set -o nounset
 # set -o xtrace 
 
 export certstore_yaml="./policy/ratify/notation-certificatestore.yaml"
+
+rm -f $certstore_yaml
 
 cat <<EOF > $certstore_yaml
 apiVersion: config.ratify.deislabs.io/v1beta1

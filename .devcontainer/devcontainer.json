@@ -5,21 +5,19 @@
     // Update 'VARIANT' to pick an Ubuntu version: jammy / ubuntu-22.04, focal / ubuntu-20.04, bionic /ubuntu-18.04
     // Use ubuntu-22.04 or ubuntu-18.04 on local arm64/Apple Silicon.
     "args": {
-      "VARIANT": "jammy",
-    },
+      "VARIANT": "jammy"
+    }
   },
   "features": {
-    "ghcr.io/devcontainers/features/azure-cli:1": {
-      "installBicep": true,
-    },
+    "ghcr.io/devcontainers/features/azure-cli:1": {},
     "ghcr.io/jsburckhardt/devcontainer-features/notation:1": {},
     "ghcr.io/dhoeric/features/oras:1": {
-      "version": "1.1.0",
+      "version": "1.1.0"
     },
-    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
-      "minikube": "none",
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1.1.8": {
+      "minikube": "none"
     },
-    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "customizations": {
     "vscode": {
@@ -29,9 +27,9 @@
         "ms-kubernetes-tools.vscode-kubernetes-tools",
         "ms-azuretools.vscode-bicep",
         "DavidAnson.vscode-markdownlint",
-        "streetsidesoftware.code-spell-checker",
-      ],
-    },
+        "streetsidesoftware.code-spell-checker"
+      ]
+    }
   },
-  "postCreateCommand": "./.devcontainer/postCreateCommand.sh",
+  "postCreateCommand": "./.devcontainer/postCreateCommand.sh"
 }

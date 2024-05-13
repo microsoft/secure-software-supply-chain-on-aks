@@ -3,19 +3,19 @@
 > [!IMPORTANT]
 > As with all Azure deployments, this will incur associated costs. Remember to [teardown](../teardown.md) all related resources after use to avoid unnecessary costs.
 
-## Description
+Within this walkthrough, the following will be accomplished:
 
-At the end of this walkthrough the following high-level tasks will have been completed:
-
-- Provisioned and configured all necessary Azure resource
-- A new GitHub Workflow which generates artifacts
-- A failed AKS workload deployment due to policy violations
-- A successful AKS workload deployment with no policy violations
+- Azure resources will be provisioned and configured.
+- A GitHub Actions workflow will be configured. In this workflow, three workloads will be built, and pertinent security artifacts will be generated.
+- Upon deployment:
+    1. One workload fails due to lack of security artifacts.
+    2. The second workload fails because its security artifacts do not meet policy expectations.
+    3. The third and final workload will pass policy checks and deploy successfully.
 
 > [!IMPORTANT]
 > This walkthrough describes one approach to ensuring the security and integrity of containerized workloads. It should be viewed as a pathway to potential success rather than a definitive template.
 
-## Configuration and environment settings
+## 1 Configuration and environment settings
 
 > [!NOTE]
 > **Assumptions**:
@@ -23,7 +23,7 @@ At the end of this walkthrough the following high-level tasks will have been com
 > - Workflows are enabled. _The Actions tab in the GitHub UI will provide instructions how to do so._
 > - [GitHub Environments](https://docs.github.com/en/rest/deployments/environments?apiVersion=2022-11-28#:~:text=Environments%2C%20environment%20secrets,for%20public%20repositories) are available. This feature requires either the repository is public _or_ the user account has GitHub Pro, GitHub Team, or GitHub Enterprise.
 
-### Configuration
+### 1.1 Configuration
 
 Custom variable values scoped to the current environment will be needed to complete steps in the walkthrough. A configuration file template will be used to allow for customization and persistance of these values. A configuration file should be created by running the following:
 
@@ -48,11 +48,11 @@ After the configuration file is created it will have to be modified for the curr
 | GIT_BRANCH            | Yes      | This will be used to indicate where the workflow YAML file can be found as well as when programmatically kicking off the workflow         | main                                                                                                                                                                                                                                                                                                           |
 | TAGS                  | No       | If there is policy for your Azure subscription requiring tags, provide them formatted as TagName=TagValue. Otherwise, leave as-is.        |                                                                                                                                                                                                                                                                                                                |
 
-### Azure CLI login
+### 1.2 Azure CLI login
 
 [Authenticate to Azure using the Azure CLI](../az-login.md).
 
-### Validation and initialization
+### 1.3 Validation and initialization
 
 The following script will validate all required tooling has been installed. There will be no output to the terminal if no issues are found.
 
@@ -66,11 +66,11 @@ Initialize the local environment by generating an env file which will be created
 ./scripts/setup/init_environment.sh
 ```
 
-## Infrastructure provisioning and configuration
+## 2 Infrastructure provisioning and configuration
 
 To leverage the GitHub CLI authentication will be required. Follow [these instructions](./gh-auth.md) for authenticating to GitHub.
 
-### Provision Azure resources
+### 2.1 Provision Azure resources
 
 All of the necessary resources can now be provisioned. Azure resources will be provisioned and configured as described in [provisioned infrastructure](../provisioned-infrastructure.md).
 
@@ -83,7 +83,7 @@ Run the following script which will provision and configure all of the required 
 ./scripts/infra/provision.sh
 ```
 
-### Create GitHub Workflow
+### 2.2 Create GitHub Workflow
 
 Run the following script to create a new GitHub Actions workflow and environment. This workflow will be responsible for **building/generating**, **signing** and **pushing** artifacts which are used later in the walkthrough.
 
@@ -94,25 +94,33 @@ Run the following script to create a new GitHub Actions workflow and environment
 ./scripts/pipelines/github/provision.sh
 ```
 
-## Pipeline execution
+## 3 Pipeline execution
 
 > [!IMPORTANT]
-> Two sample applications, Trips and POI, will be referenced through this walkthrough. These applications have no significance for the walkthrough other than being used for AKS workload deployments and a source for the creation of security artifacts.
+> Three sample applications, Trips, POI and User Profile, will be referenced through this walkthrough. These applications have no significance for the walkthrough other than being used for AKS workload deployments and a source for the creation of security artifacts.
 
 Pipeline execution will produce the following artifacts for the previously mentioned sample applications:
 
 For the Trips application:
 
-- An image is **built** and **pushed** to a local OCI registry.
-- An software bill of materials (SBOM) is **generated** and **attached** to the image in the local registry.
-- The release is **scanned** for vulnerabilities. The resulting output is **attached** to the image in the local registry.
-- The image, SBOM, and vulnerability scan result are all **signed** with Notation. _Notation automatically attaches signatures to the subject in the registry._
-- The entire bundle (image + signature, SBOM + signature, and vulnerability scan result + signature) is **copied** from the local registry to ACR using ORAS.
+- The image is **built**, **pushed** to ACR and **signed**.
+- An SBOM is **generated**, **attached** to the image and **signed**.
+- The image _and_ code are **scanned for vulnerabilities**.
+- The aggregated vulnerability scan result is **attached** to the image with OCI annotation `org.opencontainers.image.created` set to the current date and time and **signed**.
 
 For the POI application:
 
-- An image is **built** and **pushed** to a local OCI registry.
-- The image **copied** from the local registry to ACR using ORAS.
+- The image is **built** and **pushed** to ACR.
+
+For the User Profile application:
+
+- The image is **built**, **pushed** to ACR and **signed**.
+- An SBOM is **generated**, **attached** to the image and **signed**.
+- The image _and_ code are **scanned for vulnerabilities**.
+- The aggregated vulnerability scan result is **attached** to the image with OCI annotation `org.opencontainers.image.created` set to two days ago and time and **signed**.
+
+> [!NOTE]
+> The key used to sign the Trips image and its artifacts differs from that used for the User Profile and its artifacts. Although both were signed by the same Certificate Authority (CA), they have different Subjects.
 
 Trigger the workflow by executing the following script. Once the workflow has started, the status can be viewed in GitHub UI in the Actions tab.
 

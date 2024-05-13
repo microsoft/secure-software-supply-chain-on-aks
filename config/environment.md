@@ -239,18 +239,6 @@ It is set as a part of infrastructure provisioning by combining "sssc" with `DEP
   - [infra/steps/aks.sh](../scripts/infra/steps/aks.sh): used to name the provisioned AKS cluster (`${RESOURCE_PREFIX}aks`), the user-managed managed identity for Ratify (`${RESOURCE_PREFIX}RatifyAksIdentity`) and the federated credential for use by workload identity in the AKS cluster (`${RESOURCE_PREFIX}RatifyFederatedIdentityCredentials`) so the Ratify pod can authenticate as the user-managed managed identity.
   - [infra/steps/keyvault.sh](../scripts/infra/steps/keyvault.sh): used to name the provisioned Key Vault  `${RESOURCE_PREFIX}kv`.
 
-## SIGNING_CERT_NAME
-
-The friendly/display name for the leaf certificate used for signing in the pipelines. Stored in Azure Key Vault.
-
-It is set as a part of infrastructure provisioning by combining `PROJECT_NAME` with "-pipeline-cert".
-
-**Script references**:
-
-- [infra/provision.sh](../scripts/infra/provision.sh): value is set as `${PROJECT_NAME}-pipeline-cert`
-  - [infra/steps/certs.sh](../scripts/infra/steps/certs.sh): used to check if the signing cert already exists in Key Vault; if not, the CA and leaf signing certs are created.
-  - [certs/create_signing_cert_kv.sh](../scripts/certs/create_signing_cert_kv.sh): using the local certificate authority, a leaf certificate is created via a certificate signing request from Key Vault to the local CA. The created certificate is stored in Key Vault with this as its friendly / display name.
-
 ## RESOURCE_GROUP_NAME
 
 The name of the resource group created.
@@ -307,7 +295,7 @@ This is a property included in the output of `az acr create`.
 - [Walkthrough: View hierarchical relationships between artifacts in ACR](../docs/walkthrough/view-artifacts.md): This value is used to login to ACR with ORAS
 - [Walkthrough: Deploy workloads](../docs/walkthrough/sample-app-deployment.md): This value prefixes the image name to form the URL of the images to be deployed to the cluster
 
-## AZURE_APP_CLIENT_ID
+## ENTRA_APP_ID
 
 The GUID identifier for the Microsoft Entra ID app registration used by the pipeline.
 
@@ -321,18 +309,18 @@ It is set as a part of infrastructure provisioning.
   - [pipelines/ado/create_ado_service_connection_azure.sh](../scripts/pipelines/ado/create_ado_service_connection_azure.sh): a service connection / service endpoint is created to allow federated credentials are created for the app registration to facilitate interaction with Azure resources in Azure Pipelines pipelines.
 - pipelines/github/provision.sh
   - [pipelines/github/create_github_federated_credential.sh](../scripts/pipelines/github/create_github_federated_credential.sh): federated credentials are created for the app registration which explicitly grant GitHub workflows to interact with Azure resources when executing within the specified environment(`GITHUB_DEPLOYMENT_ENV_NAME`) .
-  - [pipelines/github/create_github_variables.sh](../scripts/pipelines/github/create_github_variables.sh): a secret named "AZURE_CLIENT_ID" is created within the GitHub environment (`GITHUB_DEPLOYMENT_ENV_NAME`) with this value. The secret is referenced within the GitHub workflow when authenticating with the Azure CLI.
+  - [pipelines/github/create_github_variables.sh](../scripts/pipelines/github/create_github_variables.sh): a secret named "ENTRA_APP_ID" is created within the GitHub environment (`GITHUB_DEPLOYMENT_ENV_NAME`) with this value. The secret is referenced within the GitHub workflow when authenticating with the Azure CLI.
 
 ## SERVICE_PRINCIPAL_ID
 
-The GUID identifier for the service principal created for the Microsoft Entra ID app registration (`AZURE_APP_CLIENT_ID`).
+The GUID identifier for the service principal created for the Microsoft Entra ID app registration (`ENTRA_APP_ID`).
 
 It is set as a part of infrastructure provisioning.
 
 **Script references**:
 
 - infra/provision.sh
-  - [infra/steps/app_registration.sh](../scripts/infra/steps/app_registration.sh): when `AZURE_APP_CLIENT_ID` is not set, a new app registration is created. Then, a service principal is created for the newly created app registration. The id of the service principal is the value of this variable. The service principal is then assigned as owner of the created resource group.
+  - [infra/steps/app_registration.sh](../scripts/infra/steps/app_registration.sh): when `ENTRA_APP_ID` is not set, a new app registration is created. Then, a service principal is created for the newly created app registration. The id of the service principal is the value of this variable. The service principal is then assigned as owner of the created resource group.
   - [infra/steps/keyvault.sh](../scripts/infra/steps/keyvault.sh): the service principal is assigned the following roles for the created Key Vault: secrets user, crypto user and key vault reader.
 
 ## AKS_NAME
@@ -387,16 +375,94 @@ It is set as a part of infrastructure provisioning by combining `RESOURCE_PREFIX
   - [infra/steps/certs.sh](../scripts/infra/steps/certs.sh): used to check if a signing certificate already exists.
     - [certs/create_signing_cert_kv.sh](../scripts/certs/create_signing_cert_kv.sh): a CSR (certificate signing request) is created in the Key Vault with the provided name. Following the CA signing the request, Key Vault completes the request resulting in a leaf certificate being created and stored within.
 
-## SIGNING_KEY_ID
+## CA_CERT_SUBJECT
 
-The unique identifier of the signing certificate stored in Key Vault and used to sign artifacts in the pipeline.
+The `Subject` of the Certificate Authority which signs the certificate signing requests to create the signing certificates.
 
 It is set as a part of infrastructure provisioning.
 
 **Script references**:
 
 - infra/provision.sh
-  - [infra/steps/certs.sh](../scripts/infra/steps/certs.sh): if not set, then a local certificate authority, a root certificate and a leaf certificate for signing are created. The leaf certificate is stored in Azure Key Vault and its unique identifier is retrieved using `az keyvault certificate show --vault-name "${KEY_VAULT_NAME}" --name "${SIGNING_CERT_NAME}"`.
+  - [infra/steps/certs.sh](../scripts/infra/steps/certs.sh): if not set, defined as `/C=US/ST=WA/L=Redmond/O=Company ${PROJECT_NAME}/CN=${PROJECT_NAME} Certificate Authority`.
+    - [certs/create_ca.sh](../scripts/certs/create_ca.sh): Passed in as the value of the `-subj` parameter as a part of the OpenSSL command to create the certificate for the CA key.
+
+## SIGN_CERT_SUBJECT
+
+The `Subject` of the signing certificate used to sign the successful workload (the Trips application) and its artifacts.
+
+It is set as a part of infrastructure provisioning.
+
+**Script references**:
+
+- infra/provision.sh
+  - [infra/steps/certs.sh](../scripts/infra/steps/certs.sh): if not set, defined as `C=US, ST=WA, L=Redmond, O=Company ${PROJECT_NAME}, OU=Org A, CN=pipeline.example.com`
+    - [certs/create_signing_cert_kv.sh](../scripts/certs/create_signing_cert_kv.sh): provided as the value for `subject` as a part of the JSON policy used to create the CSR in Azure Key Vault.
+- [policy/create_notation_verifier.sh](../scripts/policy/create_notation_verifier.sh): prefixed with `x509.subject:`, the only value in the `trustedIdentities` collection of the Notation trust policy.
+
+## ALT_CERT_SUBJECT
+
+The `Subject` of the signing certificate used to sign one of the failing workloads (the User Profile application) and its artifacts.
+
+It is set as a part of infrastructure provisioning.
+
+**Script references**:
+
+- infra/provision.sh
+  - [infra/steps/certs.sh](../scripts/infra/steps/certs.sh): if not set, defined as `C=US, ST=WA, L=Redmond, O=Company ${PROJECT_NAME}, OU=Org B, CN=alt.example.com`.
+    - [certs/create_alt_signing_cert_kv.sh](../scripts/certs/create_alt_signing_cert_kv.sh): provided as the value for `subject` as a part of the JSON policy used to create the CSR in Azure Key Vault.
+
+## SIGNING_CERT_NAME
+
+The name of the x509 certificate used to sign the successful workload (the Trips application) and its artifacts.
+
+It is set as a part of infrastructure provisioning.
+
+**Script references**:
+
+- infra/provision.sh
+  - [infra/steps/certs.sh](../scripts/infra/steps/certs.sh): if no `SIGNING_KEY_ID` exists, set as `${PROJECT_NAME}-pipeline-cert`.
+    - [certs/create_signing_cert_kv.sh](../scripts/certs/create_signing_cert_kv.sh): used as the file name for the CSR, the name of the certificate within Azure Key Vault and as the file name for the output PEM file containing the certificate.
+
+## ALT_SIGNING_CERT_NAME
+
+The name of the x509 certificate used to sign one of the failing workloads (the User Profile application) and its artifacts.
+
+It is set as a part of infrastructure provisioning.
+
+**Script references**:
+
+- infra/provision.sh
+  - [infra/steps/certs.sh](../scripts/infra/steps/certs.sh): if no `ALT_SIGNING_KEY_ID` exists, set as `${PROJECT_NAME}-pipeline-cert-alt`.
+    - [certs/create_alt_signing_cert_kv.sh](../scripts/certs/create_signing_cert_kv.sh): used as the file name for the CSR, the name of the certificate within Azure Key Vault and as the file name for the output PEM file containing the certificate.
+
+## SIGNING_KEY_ID
+
+The unique identifier of the signing certificate stored in Key Vault and used to sign artifacts for the successful workload (Trips) in the pipeline.
+
+It is set as a part of infrastructure provisioning.
+
+**Script references**:
+
+- infra/provision.sh
+  - [infra/steps/certs.sh](../scripts/infra/steps/certs.sh): if not set, a leaf certificate for signing is created.
+  - [certs/create_signing_cert_kv.sh](../scripts/certs/create_signing_cert_kv.sh): upon successful creation of the x509 certificate in Azure Key Vault, this value is set using the `kid` property of the output.
+- pipelines/ado/provision.sh
+  - [pipelines/ado/create_ado_variables.sh](../scripts/pipelines/ado/create_ado_variables.sh): a variable with the same name is created for use for signing with Notation within the Azure Pipelines pipeline.
+- pipelines/github/provision.sh
+  - [pipelines/github/create_github_variables.sh]: a variable with the same name is created for use for signing with Notation within the Github Actions workflow.
+
+## ALT_SIGNING_KEY_ID
+
+The unique identifier of the signing certificate stored in Key Vault and used to sign artifacts for one of the unsuccessful workload (User Profil) in the pipeline.
+
+It is set as a part of infrastructure provisioning.
+
+**Script references**:
+
+- infra/provision.sh
+  - [infra/steps/certs.sh](../scripts/infra/steps/certs.sh): if not set, then a leaf certificate for signing is created.
+  - [certs/create_alt_signing_cert_kv.sh](../scripts/certs/create_alt_signing_cert_kv.sh): upon successful creation of the x509 certificate in Azure Key Vault, this value is set using the `kid` property of the output.
 - pipelines/ado/provision.sh
   - [pipelines/ado/create_ado_variables.sh](../scripts/pipelines/ado/create_ado_variables.sh): a variable with the same name is created for use for signing with Notation within the Azure Pipelines pipeline.
 - pipelines/github/provision.sh

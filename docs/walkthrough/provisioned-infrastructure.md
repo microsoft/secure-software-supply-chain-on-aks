@@ -17,9 +17,9 @@ In Azure:
   - Azure Key Vault
     - RBAC enabled
     - SKU: Standard
-    - Within: 1 x509 certificate for Notation. _Further details can be found [here](../supplemental/signing-keys-and-certificates.md)_
+    - Within: 2 x509 certificate for Notation. _Further details can be found [here](../supplemental/signing-keys-and-certificates.md)_
   
-In Microsoft Entra ID (formerly known as Azure AD):
+In Microsoft Entra ID:
 
 - An [app registration + service principal](https://learn.microsoft.com/en-us/azure/active-directory/develop/app-objects-and-service-principals?tabs=azure-cli)
   - The app registration is used to enable appropriate access and grant permissions to the chosen pipeline

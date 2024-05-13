@@ -52,16 +52,25 @@ if [ -z $ACR_NAME ]; then
     acr_name="${RESOURCE_PREFIX}acr"
     print_style "Creating container registry $acr_name" info
 
-    acr_resource=$(az acr create \
+    acr_login_server=$(az acr create \
         --resource-group $RESOURCE_GROUP_NAME \
         --name $acr_name \
         --sku Standard \
-        --tags $TAGS)
-
-    acr_login_server=$(echo "$acr_resource" | jq -r '.loginServer')
+        --tags $TAGS \
+        --query loginServer \
+        --output tsv)
 
     write_env "ACR_NAME" $acr_name
     write_env "ACR_LOGIN_SERVER" $acr_login_server
 else
     print_style "Using existing resource: $ACR_NAME" info
+
+    ACR_LOGIN_SERVER=${ACR_LOGIN_SERVER:-}
+    if [ -z $ACR_LOGIN_SERVER ]; then 
+        write_env "ACR_LOGIN_SERVER" "${ACR_NAME}.azurecr.io"
+    fi
 fi
+
+write_env "TRIPS_APP" "${ACR_LOGIN_SERVER}/trips:v1"
+write_env "USER_PROFILE_APP" "${ACR_LOGIN_SERVER}/userprofile:v1"
+write_env "POI_APP" "${ACR_LOGIN_SERVER}/poi:v1"

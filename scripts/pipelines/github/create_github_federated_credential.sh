@@ -23,9 +23,9 @@
 #########################
 # ENV VARIABLES:
 # for details on environment variables see ./config/environment.md
-# AZURE_APP_CLIENT_ID
+# ENTRA_APP_ID
 # PROJECT_NAME
-# AZURE_APP_CLIENT_ID
+# GITHUB_REPO
 # GITHUB_DEPLOYMENT_ENV_NAME
 #########################
 
@@ -37,18 +37,20 @@ set -o nounset
 
 print_style "Creating Microsoft Entra ID federated credential for GitHub" info
 
+environment_subject="repo:$GITHUB_REPO:environment:$GITHUB_DEPLOYMENT_ENV_NAME"
+
 # Check if credential already exists
-if az ad app federated-credential list --id $AZURE_APP_CLIENT_ID | grep -q $PROJECT_NAME; then
+if az ad app federated-credential list --id $ENTRA_APP_ID --query "[].{Subject:subject}" | grep -q $environment_subject; then
     print_style "Credential already exists. Skipping creation." info
     exit 0
 fi
 
 # Create Github federated credential
-az ad app federated-credential create --id $AZURE_APP_CLIENT_ID --parameters \
+az ad app federated-credential create --id $ENTRA_APP_ID --parameters \
     '{
-        "name": "'${PROJECT_NAME}'",
+        "name": "github-'${PROJECT_NAME}'",
         "issuer": "https://token.actions.githubusercontent.com",
-        "subject": "repo:'${GITHUB_REPO}':environment:'${GITHUB_DEPLOYMENT_ENV_NAME}'",
+        "subject": "'${environment_subject}'",
         "description": "Provision resources in Azure",
         "audiences": [
             "api://AzureADTokenExchange"

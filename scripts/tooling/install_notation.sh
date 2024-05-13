@@ -30,10 +30,9 @@
 set -euo pipefail
 
 NOTATION_TOOLING_PATH=/usr/local/bin
-AKV_TOOLING_PATH="${HOME}/.config/notation/plugins/azure-kv"
 ARCH=linux_amd64
-AKV_PLUGIN_VERSION=1.0.1
-NOTATION_VERSION=1.0.1
+AKV_PLUGIN_VERSION=1.0.2
+NOTATION_VERSION=1.1.0
 
 # download Notation CLI
 NOTATION_TAR_FILE=notation_$NOTATION_VERSION\_$ARCH.tar.gz
@@ -51,19 +50,8 @@ else
     exit 1
 fi
 
-# download AKV plugin
-AKV_CHECKSUM_FILE=notation-azure-kv_$AKV_PLUGIN_VERSION\_checksums.txt
-AKV_TAR_FILE=notation-azure-kv_$AKV_PLUGIN_VERSION\_$ARCH.tar.gz
-curl -LO "https://github.com/Azure/notation-azure-kv/releases/download/v$AKV_PLUGIN_VERSION/$AKV_CHECKSUM_FILE"
-curl -LO "https://github.com/Azure/notation-azure-kv/releases/download/v$AKV_PLUGIN_VERSION/$AKV_TAR_FILE"
 
-# validate & install AKV plugin
-if shasum --check --ignore-missing $AKV_CHECKSUM_FILE| grep "$AKV_TAR_FILE: OK"; then
-    mkdir -p $AKV_TOOLING_PATH
-    tar xvzf $AKV_TAR_FILE -C $AKV_TOOLING_PATH notation-azure-kv
-    rm -rf $AKV_TAR_FILE
-    rm -rf $AKV_CHECKSUM_FILE
-else
-    echo "existing notation AKV plugin installation due to checksums not matching"
-    exit 1
-fi
+AKV_CHECKSUM=f2b2e131a435b6a9742c202237b9aceda81859e6d4bd6242c2568ba556cee20e
+plugin_url="https://github.com/Azure/notation-azure-kv/releases/download/v${AKV_PLUGIN_VERSION}/notation-azure-kv_${AKV_PLUGIN_VERSION}_${ARCH}.tar.gz"
+
+notation plugin install --url $plugin_url --sha256sum $AKV_CHECKSUM

@@ -33,24 +33,23 @@ echo $TOKEN | oras login $ACR_LOGIN_SERVER -u 00000000-0000-0000-0000-0000000000
 Verify Trips has expected artifacts attached with ORAS.
 
 ```bash
-SIGNED_IMG=$ACR_LOGIN_SERVER/trips:v1
-oras discover -o tree $SIGNED_IMG
+oras discover -o tree $TRIPS_APP
 ```
 
 Output should resemble:
 
 ```txt
-    sssczmskwoacr.azurecr.io/trips@sha256:5881e31b68a3912036a133c3cb6321a7b33de91c30dc8cc73f290b662e9e8c6e
-    ├── application/trivy+json
-    │   └── sha256:a818876327b867e012b7f82567ab9df56b903de61d0f0353ae0b916b2743cb23
-    │       └── application/vnd.cncf.notary.signature
-    │           └── sha256:b121f2987279a899d0e5d958a97d4051b659857e191454a196d3213fef779402
-    ├── application/org.example.sbom.v0
-    │   └── sha256:e1272dfa6c36cbdc5ade2f67350d9e1fb55e7b5634d0b05131ab2868b04ce4bc
-    │       └── application/vnd.cncf.notary.signature
-    │           └── sha256:a54822dc4d1ea785e23543cd78b6063249ae335d7304a995f36803f3b03b7f88
-    └── application/vnd.cncf.notary.signature
-        └── sha256:1c8d586ff8f24a8e62888cd903c3b7592bd4473a711e461b073bf5e94195bc8d
+ssscqaq79acr.azurecr.io/trips@sha256:935bb665fb4f8e798fcf093dd70a99b71559cf46c4b3da6de0efb492f2157749
+├── application/sarif+json
+│   └── sha256:81cb7f7c34708aa9ac63c0e7c4bc99ca35f072bde255db322bbd320ddb8f6157
+│       └── application/vnd.cncf.notary.signature
+│           └── sha256:8326586d0411404369ccdb66a8e410a84f2d4a9c6fec54ba7f407bfb20ee5a2c
+├── application/spdx+json
+│   └── sha256:563622a9766138a2c391fcddb6575a66fef56d6f478bc7ffa7bd10f61142766c
+│       └── application/vnd.cncf.notary.signature
+│           └── sha256:73999f3deddc3d9dd2943dd745f1c45a3f0876fa2506d1b00e663e3b27ddf9c2
+└── application/vnd.cncf.notary.signature
+    └── sha256:7799979688cbceb60154b2122a6c32122a2835e0c76b5e89748560de62b2c9aa
 ```
 
 > Even though the tag was provided, ORAS translates tag to digest for display
@@ -59,19 +58,42 @@ The `-tree` output format displays the hierarchial relationships as displayed be
 
 ![Within a container registry is an image. The image has 3 nested or child artifacts - a signature, a software bill of materials (SBOM) and a vulnerability scan result. The child SBOM has its own nested signature. The child vulnerability scan result has its own nested signature.](../../images/acr-oci-artifacts.drawio.svg)
 
-## POI
+## User Profile
 
-Verify POI image lacks any attached artifacts using ORAS.
+Like Trips, the User Profile image should be signed and have attached artifacts.
 
 ```bash
-UNSIGNED_IMG=$ACR_LOGIN_SERVER/poi:v1
-oras discover -o tree $UNSIGNED_IMG
+oras discover -o tree $USER_PROFILE_APP
 ```
 
 Output should resemble:
 
 ```txt
-sssczmskwoacr.azurecr.io/poi@sha256:ef027856e50f0f15e7bddb7d2232f28a8afad19c71413f9b5beefdbe095c3d57
+ssscqaq79acr.azurecr.io/userprofile@sha256:67bb89aa1dfc2833d6406366da5bc460fd608af535f7b3d9216abeedac5bf9f3
+├── application/sarif+json
+│   └── sha256:25062d314e2d4a2815bf3ddb374771385d54c81e9b3d6fb28c77f7a1bffa5421
+│       └── application/vnd.cncf.notary.signature
+│           └── sha256:ac8961d3eece7c78d9ed3799fade00e8670b1d86b5f51611fcc91731314d89db
+├── application/spdx+json
+│   └── sha256:ad1f11cebdc069592ec4f00e7426bcf9cc032f74b17bfb3e4528fd450e2ab043
+│       └── application/vnd.cncf.notary.signature
+│           └── sha256:c4415bccb3e6c2d7680cab18e5671265fbb0f949980078abdd6dfc48c3792663
+└── application/vnd.cncf.notary.signature
+    └── sha256:fa488510740c53975c08b7aaca97906f4900b65c24b98020a6dabea4a5dcf0ac
+```
+
+## POI
+
+Verify POI image lacks any attached artifacts using ORAS.
+
+```bash
+oras discover -o tree $POI_APP
+```
+
+Output should resemble:
+
+```txt
+ssscqaq79acr.azurecr.io/poi@sha256:8622885115a0cc578bffc278962bc3f9e6d4199315de9b0f0f0a88c911bc114d
 ```
 
 <br/>

@@ -8,21 +8,48 @@ A core facet of securing the software supply chain is policy enforcement. This c
 
 ## Configure Ratify
 
-Ratify ships with three verifiers which can be configured via the [Ratify custom resource](https://ratify.dev/docs/ratify-configuration#crds).
+This walkthrough leverages all three verifiers that Ratify currently ships with. The [Ratify custom resource](https://ratify.dev/docs/ratify-configuration#crds) is used in this guide to configure the verifiers. Each verifier handles the evaluation of a specific type of artifact. Although the verifiers themselves are not decision makers, each is configured to have an opinion on whether a given artifact passes or fails evaluation.
 
-There is a default configuration [CRD for Notation signature verification](https://ratify.dev/docs/reference/crds/verifiers/#notation) that installs as a part of the Helm chart install of Ratify. This configuration lacks certificates within the `verificationCertStores` parameter. The [Notary Project's trust store specification](https://github.com/notaryproject/specifications/blob/main/specs/trust-store-trust-policy.md#trust-store) allows verification with a root x509 certificate. The root CA certificate created during infrastructure provisioning is what will be used to verify the signatures for the image, SBOM and vulnerability scan result. An Inline Certificate Provider CRD must be created with the contents of the certificate by executing the following:
+### Notation signature verification
+
+There is a default configuration [CRD for Notation signature verification](https://ratify.dev/docs/reference/crds/verifiers/#notation) that is applied with the Ratify Helm chart installation. However, a custom certificate store is required. The [Notary Project's trust store specification](https://github.com/notaryproject/specifications/blob/main/specs/trust-store-trust-policy.md#trust-store) allows verification with a root x509 certificate. The root CA certificate created during infrastructure provisioning is what will be used to verify the signatures for the image, SBOM and vulnerability scan result. An Inline Certificate Provider CRD must be created with the contents of the certificate by executing the following:
 
 ```bash
-./scripts/certs/create_certstore_with_ca.sh
+./scripts/policy/create_certstore_with_ca.sh
 ```
 
-The updated [Notation CRD](../../policy/ratify/verifier-signature.notation.yaml) references the cert. store created named `certstore-inline`.
+A CRD to configure the Notation verifier using the created certificate store is required. Since verification is done with the root CA certificate, both the previously describe Trips (`$TRIPS_APP`) and User Profile (`$USER_PROFILE_APP`) would pass verification. For the purpose of this exercise, only Trips (`$TRIPS_APP`) should successfully deploy. By setting the `trustedIdentities` property of the Notation trust policy with the value of the Trips' signing certificate's `Subject`, such policy can be enforced.
 
-For verification of SPDX SBOMs, Ratify provides an [SBOM verifier CRD](https://ratify.dev/docs/reference/crds/verifiers/#sbom). The [CRD](../../policy/ratify/verifier-sbom.yaml) to be applied has an artifact type of `application/org.example.sbom.v0`. As the SBOM must be signed, the optional parameter `nestedReferences` is provided with the Notation signature artifact type: `application/vnd.cncf.notary.signature`.
+Execute the following to generate the Notation verifier CRD:
 
-Ratify also ships with a generic [JSON schema validator CRD](https://ratify.dev/docs/reference/crds/verifiers/#schemavalidator). It accepts a parameter named `schema`. This parameter is a list of key/value pairs where the key is an IANA media type and the value is the URL for the expected schema definition. The [CRD](../../policy/ratify/verifier-vulnscanresult.trivy.yaml) to be applied is intended to validate that there is a valid SARIF vulnerability scan result for artifacts of type `application/trivy+json`. The configured schema pairs media type `application/sarif+json` with the schema found at [https://json.schemastore.org/sarif-2.1.0-rtm.5.json](https://json.schemastore.org/sarif-2.1.0-rtm.5.json).
+```bash
+./scripts/policy/create_notation_verifier.sh
+```
 
-Execution of the following will apply the Ratify certificate provider CRD and three above-described verifier CRDs:
+### SBOM verification
+
+For verification of SPDX SBOMs, Ratify provides an [SBOM verifier CRD](https://ratify.dev/docs/reference/crds/verifiers/#sbom). The [CRD](../../policy/ratify/verifier-sbom.yaml) to be applied has an artifact type of `application/spdx+json`. As the SBOM must be signed, the optional parameter `nestedReferences` is provided with the Notation signature artifact type: `application/vnd.cncf.notary.signature`.
+
+### Vulnerability report verification
+
+For verification of Trivy- and Grype-generated SARIF vulnerability scan results, Ratify provides a [vulnerability report CRD](https://ratify.dev/docs/external%20plugins/Verifier/vulnerabilityreport). The [CRD](../../policy/ratify/verifier-vulnscanresult.trivy.yaml) to be applied has an artifact type of `application/sarif+json`. There is also a freshness requirement -- the result must be within the last 24 hours. As the vulnerability scan result must be signed, the optional parameter `nestedReferences` is provided with the Notation signature artifact type: `application/vnd.cncf.notary.signature`.
+
+### Policy
+
+Ratify supports two format options for policy declaration - [config](https://ratify.dev/docs/reference/crds/policies#configpolicy) and [rego](https://ratify.dev/docs/reference/crds/policies#regopolicy). Rego is the same language used in the body of Gatekeeper `ConstraintTemplates` and is a much more powerful option within Ratify. It facilitates crafting nuanced rules which Ratify can enforce while keeping complexity out of the `ConstraintTemplate`.
+
+The `policy` parameter within [CRD](../../policy/ratify/policy.yaml) enforces the following:
+
+- A subject workload must be signed.
+- It must have a signed SBOM in SPDX format.
+- It must a valid signed vulnerability scan result.
+- All signatures must pass Notation's authenticity, integrity and trust verification.
+
+The `passthroughEnabled` parameter determines whether Ratify returns the `verifierReports` to Gatekeeper or just the `isSuccess` value. This is set to `true` as there is no other way to surface details when a workload is denied admission / fails.
+
+### Apply CRDs
+
+Execution of the following will apply all of the above-described resources:
 
 ```bash
 ./scripts/policy/apply_ratify_crds.sh
@@ -32,15 +59,9 @@ Execution of the following will apply the Ratify certificate provider CRD and th
 
 Gatekeeper includes two relevant types of custom resources. A [`ConstraintTemplate`](https://open-policy-agent.github.io/gatekeeper/website/docs/constrainttemplates/) is designed to execute a block of [rego](https://www.openpolicyagent.org/docs/latest/policy-language/) and determine whether the workload should be deployed. A `Constraint` is an implementation of a given template. Constraints provide values for a template's parameters and can be scoped.
 
-Three constraint templates with accompanying constraints need to be applied. Each template handles evaluation of a single rule. Within the rego block of each template, the `external_data` function is called which is how Gatekeeper knows to make the HTTP call to Ratify for additional information. The remainder of the block involves parsing Ratify's response object and checking for specific values.
+Although most of the heavy lifting is done within the Ratify policy configuration, the final `isSuccess` value in the response cannot serve as the sole decision maker. Within the [constraint template](../../policy/gatekeeper/ratifyverification/constraint-template.yaml), if the Ratify response root-level `isSuccess` property equals `false`, this means that the subject lacked reference artifacts. Otherwise, Ratify sets it to `true`. For any / all failing verifier results, the error message is collected. This allows the error message from Gatekeeper to include the unique error message(s) returned from Ratify to more easily inform users _why_ a workload was not deployed. A [constraint](../../policy/gatekeeper/ratifyverification/constraint.yaml) to accompany the constraint template is also required.
 
-| Rule                                               | ConstraintTemplate                                                                                                              | Constraint                                                                                                    |
-|----------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
-| Image must be signed by Notation                   | [constraint-template.notation.yaml](../../policy/gatekeeper/signedimage/constraint-template.notation.yaml)                      | [constraint.notation.yaml](../../policy/gatekeeper/signedimage/constraint.notation.yaml)                      |
-| Image must have a signed SBOM                      | [constraint-template.spdx.notation.yaml](../../policy/gatekeeper/signedsbom/constraint-template.spdx.notation.yaml)             | [constraint.spdx.notation.yaml](../../policy/gatekeeper/signedsbom/constraint.spdx.notation.yaml)             |
-| Image must have a signed vulnerability scan result | [constraint-template.trivy.notation.yaml](../../policy/gatekeeper/signedvulnscanresult/constraint-template.trivy.notation.yaml) | [constraint.trivy.notation.yaml](../../policy/gatekeeper/signedvulnscanresult/constraint.trivy.notation.yaml) |
-
-The following script will apply the `Constraint` and `ConstraintTemplate` CRDs described above:
+The following script will apply the CRDs described above:
 
 ```bash
 ./scripts/policy/apply_gatekeeper_crds.sh

@@ -7,118 +7,255 @@ parameters:
 trigger: none
 pr: none
 
-name: Secure Software Supply Chain
+name: Secure Software Supply Chain for Linux workloads with Notation
 
 variables:
 - group: ${{ parameters.variableGroupName }}
-- name: SIGNED_APP_NAME
-  value: trips
-- name: UNSIGNED_APP_NAME
-  value: poi
-- name: IMAGE_TAG
-  value: v1
-
-resources:
-  containers:
-    - container: oci-registry
-      image: ghcr.io/oras-project/registry@sha256:321aaa9de1049b3988a8cb7e4ae2043ec13df78bf140b5335b015823e9779da3 #v1.0.0-rc.4
-      ports:
-        - '5000:5000'
 
 jobs:
-- job: Signed
-  displayName: "Build & Push Signed Image"
-  services:
-    oci-registry: oci-registry
-  variables:
-    - name: APP_DIR
-      value: ./src/$(SIGNED_APP_NAME)
 
-  steps:
-  - bash: scripts/tooling/install-tooling.sh
-    displayName: "Install Tooling (oras, notation, sbom-tool, trivy)"
-  - template: templates/docker-build-and-push.yml
-    parameters:
-      workingDirectory: $(APP_DIR)
-      imageTag: localhost:5000/$(SIGNED_APP_NAME):$(IMAGE_TAG)
+  - job: trips
+    displayName: "Build & push Trips"
+    variables:
+      - name: APP_DIR
+        value: ./src/trips
+    steps:
+      - bash: scripts/tooling/install_tooling.sh
+        displayName: "Install Tooling (oras, sbom-tool, trivy, notation)"
 
-  - bash: notation key add default --id $(SIGNING_KEY_ID) --plugin azure-kv --plugin-config "as_secret"=true
-    displayName: "Add notation key"
+      - task: AzureCLI@2
+        displayName: "Build and push image"
+        inputs:
+          azureSubscription: $(AZURE_SERVICE_CONNECTION)
+          scriptType: bash
+          scriptLocation: inlineScript
+          workingDirectory:  $(APP_DIR)
+          inlineScript: |
+            az acr login --name $ACR_NAME
+            docker build -t $IMAGE_TAG .
+            docker push $IMAGE_TAG
+            IMAGE_PATH=$(docker image inspect --format='{{index .RepoDigests 0}}' $IMAGE_TAG)
+            echo "##vso[task.setvariable variable=IMAGE_PATH;]$IMAGE_PATH"
+        env:
+          IMAGE_TAG:  $(ACR_LOGIN_SERVER)/trips:v1
+          ACR_NAME: $(ACR_NAME)
 
-  - task: AzureCLI@2
-    displayName: "Create & Attach SBOM"
-    inputs:
-      azureSubscription: $(AZURE_SERVICE_CONNECTION)
-      workingDirectory: $(APP_DIR)
-      scriptType: bash
-      scriptLocation: inlineScript
-      inlineScript: |
-        sbom-tool generate \
-            -BuildDropPath . \
-            -BuildComponentPath . \
-            -PackageName pn \
-            -ManifestDirPath . \
-            -PackageVersion 1.0 \
-            -PackageSupplier $SIGNED_APP_NAME \
-            -NamespaceUriUniquePart $SIGNED_APP_NAME \
-            -NamespaceUriBase https://www.microsoft.com \
-            -DeleteManifestDirIfPresent true
+      - task: AzureCLI@2
+        displayName: "Sign image"
+        inputs:
+          azureSubscription:  $(AZURE_SERVICE_CONNECTION)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            notation sign --id $KEY_ID --plugin azure-kv --plugin-config "as_secret"=true --signature-format cose $ARTIFACT_TO_SIGN
+        env:
+          KEY_ID: $(SIGNING_KEY_ID)
+          ARTIFACT_TO_SIGN:  $(IMAGE_PATH)
 
-        oras attach  --distribution-spec v1.1-referrers-tag --artifact-type application/spdx+json $IMAGE_PATH ./_manifest/spdx_2.2/manifest.spdx.json:application/spdx+json
+      - task: AzureCLI@2
+        displayName: "Generate and attach SBOM to image"
+        inputs:
+          azureSubscription: $(AZURE_SERVICE_CONNECTION)
+          scriptType: bash
+          scriptLocation: inlineScript
+          workingDirectory: $(APP_DIR)
+          inlineScript: |
+            docker pull $IMAGE_PATH
+            
+            sbom-tool generate \
+              -BuildDropPath . \
+              -BuildComponentPath . \
+              -BuildListFile ../empty-file-list.txt \
+              -DockerImagesToScan $IMAGE_PATH \
+              -PackageSupplier Trips \
+              -PackageName Trips \
+              -PackageVersion 1.0 \
+              -DeleteManifestDirIfPresent true \
+              -FetchLicenseInformation true \
+              -EnablePackageMetadataParsing true
+              
+            oras attach --distribution-spec v1.1-referrers-tag --artifact-type application/spdx+json $IMAGE_PATH ./_manifest/spdx_2.2/manifest.spdx.json:application/spdx+json
+            SBOM_DIGEST=$(oras discover -o json --artifact-type application/spdx+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest")
+            echo "##vso[task.setvariable variable=SBOM_DIGEST;]$SBOM_DIGEST"
+        env:
+          IMAGE_PATH: $(IMAGE_PATH)
+      
+      - task: AzureCLI@2
+        displayName: "Sign SBOM"
+        inputs:
+          azureSubscription:  $(AZURE_SERVICE_CONNECTION)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            notation sign --id $KEY_ID --plugin azure-kv --plugin-config "as_secret"=true --signature-format cose $ARTIFACT_TO_SIGN
+        env:
+          KEY_ID: $(SIGNING_KEY_ID)
+          ARTIFACT_TO_SIGN:  $(ACR_LOGIN_SERVER)/trips@$(SBOM_DIGEST)
 
-  - task: AzureCLI@2
-    displayName: "Run & Attach Vulnerability Scan Results"
-    inputs:
-      azureSubscription: $(AZURE_SERVICE_CONNECTION)
-      workingDirectory: $(APP_DIR)
-      scriptType: bash
-      scriptLocation: inlineScript
-      inlineScript: |
-        trivy fs --format sarif --output trivy_scan_results.json .
-        oras attach  --distribution-spec v1.1-referrers-tag --artifact-type application/sarif+json $IMAGE_PATH trivy_scan_results.json:application/sarif+json
-    env:
-      IMAGE_REPO: localhost:5000/$(SIGNED_APP_NAME)
+      - bash: |
+          current_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          echo "##vso[task.setvariable variable=VULN_DATE;]$current_date"
+        displayName: "Set vuln. scan date"
+        
+      - task: AzureCLI@2
+        displayName: "Scan for vulnerabilities and attach result"
+        inputs:
+          azureSubscription: $(AZURE_SERVICE_CONNECTION)
+          workingDirectory: $(APP_DIR)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            trivy fs --format sarif --output trivy_scan_results.json .
+            oras attach --distribution-spec v1.1-referrers-tag --annotation "org.opencontainers.image.created=$VULN_DATE" --artifact-type application/sarif+json $IMAGE_PATH trivy_scan_results.json:application/sarif+json
+            TRIVY_DIGEST=$(oras discover -o json --artifact-type application/sarif+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest")
+            echo "##vso[task.setvariable variable=TRIVY_DIGEST;]$TRIVY_DIGEST"
+        env:
+          IMAGE_PATH:  $(IMAGE_PATH)
+          VULN_DATE: $(VULN_DATE)
 
-  - task: AzureCLI@2 # Run in an AzureCLI task so that notation can authenticate to Azure Key Vault
-    displayName: "Sign Artifacts"
-    inputs:
-      azureSubscription: $(AZURE_SERVICE_CONNECTION)
-      scriptType: bash
-      scriptLocation: inlineScript
-      inlineScript: |
-        notation sign --signature-format cose --key default $IMAGE_PATH
-        notation sign --signature-format cose --key default $IMAGE_REPO@$(oras discover -o json --artifact-type application/spdx+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest") 
-        notation sign --signature-format cose --key default $IMAGE_REPO@$(oras discover -o json --artifact-type application/sarif+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest")
-    env:
-      IMAGE_REPO: localhost:5000/$(SIGNED_APP_NAME)
+      - task: AzureCLI@2
+        displayName: "Sign vulnerability scan result"
+        inputs:
+          azureSubscription:  $(AZURE_SERVICE_CONNECTION)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            notation sign --id $KEY_ID --plugin azure-kv --plugin-config "as_secret"=true --signature-format cose $ARTIFACT_TO_SIGN
+        env:
+          KEY_ID: $(SIGNING_KEY_ID)
+          ARTIFACT_TO_SIGN:  $(ACR_LOGIN_SERVER)/trips@$(TRIVY_DIGEST)
 
-  - template: templates/copy-to-acr.yml
-    parameters:
-      azureServiceConnection: $(AZURE_SERVICE_CONNECTION)
-      acrName: $(ACR_NAME)
-      localImage: $(IMAGE_PATH)
-      remoteImage: $(ACR_LOGIN_SERVER)/$(SIGNED_APP_NAME):$(IMAGE_TAG)
+  - job: poi
+    displayName: "Build & push POI"
+    variables:
+      - name: APP_DIR
+        value: ./src/poi
+    steps:
+      - task: AzureCLI@2
+        displayName: "Build and push image"
+        inputs:
+          azureSubscription: $(AZURE_SERVICE_CONNECTION)
+          workingDirectory:  $(APP_DIR)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            az acr login --name $ACR_NAME
+            docker build -t $IMAGE_TAG .
+            docker push $IMAGE_TAG
+        env:
+          ACR_NAME: $(ACR_NAME)
+          IMAGE_TAG:  $(ACR_LOGIN_SERVER)/poi:v1
 
-- job: Unsigned
-  displayName: "Build & Push Unsigned Image"
-  services:
-    oci-registry: oci-registry
-  variables:
-    - name: APP_DIR
-      value: ./src/$(UNSIGNED_APP_NAME)
+  - job: userprofile
+    displayName: "Build & push UserProfile"
+    variables:
+      - name: APP_DIR
+        value: ./src/userprofile
 
-  steps:
-  - bash: scripts/tooling/install-tooling.sh
-    displayName: "Install ORAS and Notation"
+    steps:
+      
+      - bash: scripts/tooling/install_tooling.sh
+        displayName: "Install Tooling (oras, sbom-tool, trivy, notation)"
 
-  - template: templates/docker-build-and-push.yml
-    parameters:
-      workingDirectory: $(APP_DIR)
-      imageTag: localhost:5000/$(UNSIGNED_APP_NAME):$(IMAGE_TAG)
+      - task: AzureCLI@2
+        displayName: "Build and push image"
+        inputs:
+          azureSubscription: $(AZURE_SERVICE_CONNECTION)
+          workingDirectory:  $(APP_DIR)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            az acr login --name $ACR_NAME
+            docker build -t $IMAGE_TAG .
+            docker push $IMAGE_TAG
+            IMAGE_PATH=$(docker image inspect --format='{{index .RepoDigests 0}}' $IMAGE_TAG)
+            echo "##vso[task.setvariable variable=IMAGE_PATH;]$IMAGE_PATH"
+        env:
+          IMAGE_TAG:  $(ACR_LOGIN_SERVER)/userprofile:v1
+          ACR_NAME: $(ACR_NAME)
 
-  - template: templates/copy-to-acr.yml
-    parameters:
-      azureServiceConnection: $(AZURE_SERVICE_CONNECTION)
-      acrName: $(ACR_NAME)
-      localImage: $(IMAGE_PATH)
-      remoteImage: $(ACR_LOGIN_SERVER)/$(UNSIGNED_APP_NAME):$(IMAGE_TAG)
+      - task: AzureCLI@2
+        displayName: "Sign image"
+        inputs:
+          azureSubscription:  $(AZURE_SERVICE_CONNECTION)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            notation sign --id $KEY_ID --plugin azure-kv --plugin-config "as_secret"=true --signature-format cose $ARTIFACT_TO_SIGN
+        env:
+          KEY_ID: $(ALT_SIGNING_KEY_ID)
+          ARTIFACT_TO_SIGN:  $(IMAGE_PATH)
+
+      - task: AzureCLI@2
+        displayName: "Generate and attach SBOM to image"
+        inputs:
+          azureSubscription: $(AZURE_SERVICE_CONNECTION)
+          scriptType: bash
+          scriptLocation: inlineScript
+          workingDirectory: $(APP_DIR)
+          inlineScript: |
+            docker pull $IMAGE_PATH
+            
+            sbom-tool generate \
+              -BuildDropPath . \
+              -BuildComponentPath . \
+              -BuildListFile ../empty-file-list.txt \
+              -DockerImagesToScan $IMAGE_PATH \
+              -PackageSupplier UserProfile \
+              -PackageName UserProfile \
+              -PackageVersion 1.0 \
+              -DeleteManifestDirIfPresent true \
+              -FetchLicenseInformation true \
+              -EnablePackageMetadataParsing true
+              
+            oras attach --distribution-spec v1.1-referrers-tag --artifact-type application/spdx+json $IMAGE_PATH ./_manifest/spdx_2.2/manifest.spdx.json:application/spdx+json
+            SBOM_DIGEST=$(oras discover -o json --artifact-type application/spdx+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest")
+            echo "##vso[task.setvariable variable=SBOM_DIGEST;]$SBOM_DIGEST"
+        env:
+          IMAGE_PATH: $(IMAGE_PATH)
+      
+      - task: AzureCLI@2
+        displayName: "Sign SBOM"
+        inputs:
+          azureSubscription:  $(AZURE_SERVICE_CONNECTION)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            notation sign --id $KEY_ID --plugin azure-kv --plugin-config "as_secret"=true --signature-format cose $ARTIFACT_TO_SIGN
+        env:
+          KEY_ID: $(ALT_SIGNING_KEY_ID)
+          ARTIFACT_TO_SIGN:  $(ACR_LOGIN_SERVER)/userprofile@$(SBOM_DIGEST)
+
+      - bash: |
+          now=$(date -u)
+          current_date=$(date --date="${now} -2 day" -u +'%Y-%m-%dT%H:%M:%SZ')
+          echo "##vso[task.setvariable variable=VULN_DATE;]$current_date"
+        displayName: "Set vuln. scan date"
+        
+      - task: AzureCLI@2
+        displayName: "Scan for vulnerabilities and attach result"
+        inputs:
+          azureSubscription: $(AZURE_SERVICE_CONNECTION)
+          workingDirectory: $(APP_DIR)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            trivy fs --format sarif --output trivy_scan_results.json .
+            oras attach --distribution-spec v1.1-referrers-tag --annotation "org.opencontainers.image.created=$VULN_DATE" --artifact-type application/sarif+json $IMAGE_PATH trivy_scan_results.json:application/sarif+json
+            TRIVY_DIGEST=$(oras discover -o json --artifact-type application/sarif+json --distribution-spec v1.1-referrers-tag $IMAGE_PATH | jq -r ".manifests[0].digest")
+            echo "##vso[task.setvariable variable=TRIVY_DIGEST;]$TRIVY_DIGEST"
+        env:
+          IMAGE_PATH:  $(IMAGE_PATH)
+          VULN_DATE: $(VULN_DATE)
+
+      - task: AzureCLI@2
+        displayName: "Sign vulnerability scan result"
+        inputs:
+          azureSubscription:  $(AZURE_SERVICE_CONNECTION)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            notation sign --id $KEY_ID --plugin azure-kv --plugin-config "as_secret"=true --signature-format cose $ARTIFACT_TO_SIGN
+        env:
+          KEY_ID: $(ALT_SIGNING_KEY_ID)
+          ARTIFACT_TO_SIGN:  $(ACR_LOGIN_SERVER)/userprofile@$(TRIVY_DIGEST)

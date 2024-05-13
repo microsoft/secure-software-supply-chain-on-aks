@@ -1,11 +1,15 @@
 # Policy
 
+[Gatekeeper](https://open-policy-agent.github.io/gatekeeper/website/) can interface with [external data sources](https://open-policy-agent.github.io/gatekeeper/website/docs/externaldata) to provide supplementary information to be considered when evaluating policy. [Ratify](https://ratify.dev/) serves as an external data provider for Gatekeeper and allows policy to be written against OCI registries concerning artifacts and relationships between artifacts and images alike. Both Gatekeeper and Ratify have defined [CustomResourceDefinitions](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/) to manage aspects of configuration.
+
 ## Gatekeeper
 
-Gatekeeper supports policies for both admission control webhooks - validation and mutation. Only validation policies are in scope for this scenario.
+Gatekeeper is a validating and mutating [admission control webhook](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#admission-webhooks) for Kubernetes. Each policy is composed of two parts: [constraint templates](https://open-policy-agent.github.io/gatekeeper/website/docs/howto#constraint-templates) and [constraints](https://open-policy-agent.github.io/gatekeeper/website/docs/howto#constraints).
 
-Each validation policy is made up of two parts: constraint templates and constraints. A collection of policies relevant to the capabilities and controls discussed in this repository can be found [here](gatekeeper-policy/README.md).
+[This page](gatekeeper-policy/README.md) describes the policies included in this repository.
 
 ## Ratify
 
-Ratify is an external data provider for Gatekeeper. It has to composable providers itself -- stores and verifiers. For this situation, the only configured store provider is the Azure Container Registry and that is handled on installation of Ratify on the cluster. Three artifact types which require unique verifiers for handling: Notation signatures, SPDX SBOMs and Trivy vulnerability scan results in SARIF format. The Notation verifier is built into Ratify and configuration is handled on install, like the store provider. The configuration of the SBOM and vulnerability scan result verifiers is done with CRDs as described [here](ratify-verifiers/README.md)
+Ratify has three composable providers -- policy, stores and verifiers. Ratify allows for one, and only one, Policy configuration. Stores, also known as _referrer stores_, are the data sources from which Ratify can retrieve relevant artifacts. The ORAS (OCI Registry As Storage) store is shipped as a part of Ratify. Verifiers are used to inspect and evaluate particular types of artifacts and make a decision regarding an artifact.
+
+[This page](ratify-verifiers/README.md) describes the Ratify CRDs used in the walkthrough.

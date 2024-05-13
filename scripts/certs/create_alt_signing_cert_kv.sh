@@ -24,8 +24,9 @@
 
 ####################################################################
 # ENV VARIABLES:
-# SIGNING_CERT_NAME
+# ALT_SIGNING_CERT_NAME
 # KEY_VAULT_NAME
+# ALT_CERT_SUBJECT
 # (for details on environment variables see ./config/environment.md)
 ####################################################################
 
@@ -67,7 +68,7 @@ policy=$(cat <<EOF
     "keyUsage": [
       "digitalSignature"
     ],
-    "subject": $SIGN_CERT_SUBJECT,
+    "subject": $ALT_CERT_SUBJECT,
     "validityInMonths": 12
   }
 }
@@ -76,16 +77,16 @@ EOF
 
 # create a certificate signing request via keyvault
 # the response doesn't contain the necessary header/footer to the certificate signing request so we add it here
-echo '-----BEGIN CERTIFICATE REQUEST-----' > "${script_dir}/${SIGNING_CERT_NAME}.csr"
-az keyvault certificate create --vault-name "${KEY_VAULT_NAME}" --name "${SIGNING_CERT_NAME}" --policy "${policy}" --query csr -o tsv >> "${script_dir}/${SIGNING_CERT_NAME}.csr"
-echo '-----END CERTIFICATE REQUEST-----' >> "${script_dir}/${SIGNING_CERT_NAME}.csr"
+echo '-----BEGIN CERTIFICATE REQUEST-----' > "${script_dir}/${ALT_SIGNING_CERT_NAME}.csr"
+az keyvault certificate create --vault-name "${KEY_VAULT_NAME}" --name "${ALT_SIGNING_CERT_NAME}" --policy "${policy}" --query csr -o tsv >> "${script_dir}/${ALT_SIGNING_CERT_NAME}.csr"
+echo '-----END CERTIFICATE REQUEST-----' >> "${script_dir}/${ALT_SIGNING_CERT_NAME}.csr"
 
 # complete the certificate signing request using the local CA
-openssl x509 -req -in "${script_dir}/${SIGNING_CERT_NAME}.csr" -CA "${script_dir}/ca.crt" -CAkey "${script_dir}/ca.key" -CAcreateserial -out "${script_dir}/${SIGNING_CERT_NAME}.crt" -days 365 -sha256 -extensions 'notation_cert' -extfile "${script_dir}/openssl.cnf"
+openssl x509 -req -in "${script_dir}/${ALT_SIGNING_CERT_NAME}.csr" -CA "${script_dir}/ca.crt" -CAkey "${script_dir}/ca.key" -CAcreateserial -out "${script_dir}/${ALT_SIGNING_CERT_NAME}.crt" -days 365 -sha256 -extensions 'notation_cert' -extfile "${script_dir}/openssl.cnf"
 
 # append the CA cert to create a certificate bundle
-cat "${script_dir}/ca.crt" >> "${script_dir}/${SIGNING_CERT_NAME}.crt"
+cat "${script_dir}/ca.crt" >> "${script_dir}/${ALT_SIGNING_CERT_NAME}.crt"
 
 # complete the signing request and push the cert to Key Vault
-signing_key_id=$(az keyvault certificate pending merge --vault-name "${KEY_VAULT_NAME}" --name "${SIGNING_CERT_NAME}" -f "${script_dir}/${SIGNING_CERT_NAME}.crt" --query kid -o tsv)
-write_env "SIGNING_KEY_ID" $signing_key_id
+alt_key_id=$(az keyvault certificate pending merge --vault-name "${KEY_VAULT_NAME}" --name "${ALT_SIGNING_CERT_NAME}" -f "${script_dir}/${ALT_SIGNING_CERT_NAME}.crt" --query kid -o tsv)
+write_env "ALT_SIGNING_KEY_ID" $alt_key_id

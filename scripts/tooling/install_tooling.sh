@@ -27,16 +27,11 @@
 # ENV VARIABLES: NONE
 #########################
 
-set -uo pipefail
+set -euo pipefail
 
-SBOM_TOOLING_PATH=/usr/local/bin
-ARCH=linux-x64
-SBOM_TOOL_VERSION=1.1.5
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-# download SBOM Tool
-SBOM_DL_FILE=sbom-tool-$ARCH
-curl -Lo sbom-tool https://github.com/microsoft/sbom-tool/releases/download/v$SBOM_TOOL_VERSION/$SBOM_DL_FILE
-
-# Install SBOM tool
-chmod +x sbom-tool
-mv sbom-tool $SBOM_TOOLING_PATH
+$SCRIPT_DIR/install_oras.sh
+$SCRIPT_DIR/install_sbom_tool.sh
+$SCRIPT_DIR/install_trivy.sh
+$SCRIPT_DIR/install_notation.sh

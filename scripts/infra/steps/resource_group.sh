@@ -52,7 +52,6 @@ RESOURCE_GROUP_NAME=${RESOURCE_GROUP_NAME:-}
 if [ -z $RESOURCE_GROUP_NAME ]; then
     resource_group_name="${PROJECT_NAME}-rg"
     print_style "Creating resource group: $resource_group_name" info
-
     az group create --name $resource_group_name --location $AZURE_LOCATION --tags $TAGS
     write_env "RESOURCE_GROUP_NAME" $resource_group_name
 else

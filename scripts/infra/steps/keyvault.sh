@@ -16,19 +16,19 @@
 # CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-#######################################################
-# Provision key vault used to hold certs for signing and verification
-#######################################################
+###################################################################
+# Provision Azure Key Vault to hold x509 certificates for signing #
+###################################################################
 
-#########################
+####################################################################
 # ENV VARIABLES:
-# for details on environment variables see ./config/environment.md
 # KEY_VAULT_NAME
 # RESOURCE_PREFIX
 # RESOURCE_GROUP_NAME
 # AZURE_SUBSCRIPTION_ID
 # KEY_VAULT_NAME
-#########################
+# (for details on environment variables see ./config/environment.md)
+####################################################################
 
 set -o errexit
 set -o pipefail
@@ -50,45 +50,23 @@ if [ -z $KEY_VAULT_NAME ]; then
     key_vault_name="${RESOURCE_PREFIX}kv"
 
     print_style "Deploying Azure Key Vault ${key_vault_name}" info
-
-    key_vault_id=$(az keyvault create \
-            --name $key_vault_name \
-            --resource-group $RESOURCE_GROUP_NAME \
-            --enable-rbac-authorization true \
-            --sku standard \
-            --tags $TAGS \
-            --query id)
-
-    print_style "Assigning secrets user, crypto user and key vault reader roles to pipeline service principal" info
-
-    secrets_role=$(az role assignment create \
-        --role "Key Vault Secrets User" \
-        --assignee $SERVICE_PRINCIPAL_ID \
-        --scope /subscriptions/$AZURE_SUBSCRIPTION_ID/resourcegroups/$RESOURCE_GROUP_NAME/providers/Microsoft.KeyVault/vaults/$key_vault_name)
-
-    crypto_role=$(az role assignment create \
-        --role "Key Vault Crypto User" \
-        --assignee $SERVICE_PRINCIPAL_ID \
-        --scope /subscriptions/$AZURE_SUBSCRIPTION_ID/resourcegroups/$RESOURCE_GROUP_NAME/providers/Microsoft.KeyVault/vaults/$key_vault_name)
-
-    reader_role=$(az role assignment create \
-        --role "Key Vault Reader" \
-        --assignee $SERVICE_PRINCIPAL_ID \
-        --scope /subscriptions/$AZURE_SUBSCRIPTION_ID/resourcegroups/$RESOURCE_GROUP_NAME/providers/Microsoft.KeyVault/vaults/$key_vault_name)
-
-    # handle signed in user
-
-    print_style "Assigning Key Vault admin role to you - the currently signed in user" info
-    
-    signed_in_user=$(az ad signed-in-user show --query id -o tsv)
-    user_admin=$(az role assignment create \
-        --role "Key Vault Administrator" \
-        --assignee $signed_in_user \
-        --scope /subscriptions/$AZURE_SUBSCRIPTION_ID/resourcegroups/$RESOURCE_GROUP_NAME)
-
-    print_style "Completed deploying Azure resources $RESOURCE_GROUP_NAME" success
+    az keyvault create \
+        --name $key_vault_name \
+        --resource-group $RESOURCE_GROUP_NAME \
+        --enable-rbac-authorization true \
+        --sku standard \
+        --tags $TAGS \
+        --only-show-errors
 
     write_env "KEY_VAULT_NAME" $key_vault_name
 else
     print_style "Using existing resource: $KEY_VAULT_NAME" info
 fi
+
+print_style "Assigning Key Vault Admin role to you - the currently signed in user" info
+
+signed_in_user=$(az ad signed-in-user show --query id -o tsv)
+az role assignment create \
+    --role "Key Vault Administrator" \
+    --assignee $signed_in_user \
+    --scope /subscriptions/$AZURE_SUBSCRIPTION_ID/resourcegroups/$RESOURCE_GROUP_NAME
