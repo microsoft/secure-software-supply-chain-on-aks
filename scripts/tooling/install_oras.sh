@@ -29,14 +29,22 @@
 
 set -uo pipefail
 
-SBOM_TOOLING_PATH=/usr/local/bin
-ARCH=linux-x64
-SBOM_TOOL_VERSION=1.1.5
+ORAS_TOOLING_PATH=/usr/local/bin
+ARCH=linux_amd64
+ORAS_VERSION=1.1.0
 
-# download SBOM Tool
-SBOM_DL_FILE=sbom-tool-$ARCH
-curl -Lo sbom-tool https://github.com/microsoft/sbom-tool/releases/download/v$SBOM_TOOL_VERSION/$SBOM_DL_FILE
+# download oras CLI
+ORAS_TAR_FILE=oras_$ORAS_VERSION\_$ARCH.tar.gz
+ORAS_CHECKSUM_FILE=oras_$ORAS_VERSION\_checksums.txt
+curl -LO https://github.com/oras-project/oras/releases/download/v$ORAS_VERSION/$ORAS_TAR_FILE
+curl -LO https://github.com/oras-project/oras/releases/download/v$ORAS_VERSION/$ORAS_CHECKSUM_FILE
 
-# Install SBOM tool
-chmod +x sbom-tool
-mv sbom-tool $SBOM_TOOLING_PATH
+# validate & install oras CLI
+if shasum --check --ignore-missing $ORAS_CHECKSUM_FILE | grep "$ORAS_TAR_FILE: OK"; then
+    tar -zxf $ORAS_TAR_FILE -C $ORAS_TOOLING_PATH oras
+    rm -rf $ORAS_TAR_FILE
+    rm -rf $ORAS_CHECKSUM_FILE
+else
+    echo "exititing oras CLI installation due to checksums not matching"
+    exit 1
+fi

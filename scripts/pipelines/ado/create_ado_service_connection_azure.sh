@@ -26,7 +26,10 @@
 # ADO_ORGANIZATION_URL
 # ADO_PROJECT_NAME
 # ADO_AZURE_SERVICE_CONNECTION
-# AZURE_APP_CLIENT_ID
+# ENTRA_APP_ID
+# AZURE_SUBSCRIPTION_ID
+# AZURE_SUBSCRIPTION_NAME
+# AZURE_TENANT_ID
 #########################
 
 set -o errexit
@@ -45,10 +48,6 @@ set -o nounset
 print_style "Creating ADO service connection and federated credentials" info
 
 # Setup Azure service connection
-az_sub=$(az account show --output json)
-az_sub_id=$(echo "$az_sub" | jq -r '.id')
-az_sub_name=$(echo "$az_sub" | jq -r '.name')
-az_sp_tenant_id=$(echo "$az_sub" | jq -r '.tenantId')
 ado_proj_id=$(az devops project list --org $ADO_ORGANIZATION_URL --query "value[?name=='$ADO_PROJECT_NAME']".id -o tsv)
 
 # Create Azure Service connection in Azure DevOps
@@ -63,12 +62,12 @@ cp ./config/sc_azurerm.template ./config/sc_azurerm.json
 
 jq \
     --arg proj_id "$ado_proj_id" \
-    --arg tenant "$az_sp_tenant_id" \
-    --arg azure_app_client_id "$AZURE_APP_CLIENT_ID" \
+    --arg tenant "$AZURE_TENANT_ID" \
+    --arg azure_app_client_id "$ENTRA_APP_ID" \
     --arg ado_project_name "$ADO_PROJECT_NAME" \
     --arg ado_sc_name "$ADO_AZURE_SERVICE_CONNECTION" \
-    --arg subscriptionId "$az_sub_id" \
-    --arg subscriptionName "$az_sub_name" \
+    --arg subscriptionId "$AZURE_SUBSCRIPTION_ID" \
+    --arg subscriptionName "$AZURE_SUBSCRIPTION_NAME" \
     '.serviceEndpointProjectReferences[0].projectReference.id = $proj_id |
     .data.subscriptionId = $subscriptionId |
     .data.subscriptionName = $subscriptionName |
@@ -91,7 +90,7 @@ az devops service-endpoint update \
 
 # create federated credential for the app using the service connection details
 print_style "Adding federated credential to Microsoft Entra ID App" info
-az ad app federated-credential create --id $AZURE_APP_CLIENT_ID --parameters \
+az ad app federated-credential create --id $ENTRA_APP_ID --parameters \
     '{
         "name": "azure-devops-credential",
         "issuer": "'"$issuer"'",

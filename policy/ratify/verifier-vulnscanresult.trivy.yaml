@@ -1,11 +1,13 @@
-apiVersion: config.ratify.deislabs.io/v1alpha1
+apiVersion: config.ratify.deislabs.io/v1beta1
 kind: Verifier
 metadata:
-  name: verifier-trivy
+  name: verifier-vuln
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "5"
 spec:
-  name: schemavalidator
-  artifactTypes: application/trivy+json
-  parameters: 
+  name: vulnerabilityreport
+  artifactTypes: application/sarif+json
+  parameters:
     nestedReferences: application/vnd.cncf.notary.signature
-    schemas:
-      application/sarif+json: https://json.schemastore.org/sarif-2.1.0-rtm.5.json
+    maximumAge: 24h

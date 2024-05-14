@@ -1,0 +1,73 @@
+apiVersion: config.ratify.deislabs.io/v1beta1
+kind: Policy
+metadata:
+  name: "ratify-policy"
+spec:
+  type: "rego-policy"
+  parameters:
+    passthroughEnabled: true
+    policy: |
+      package ratify.policy
+
+      import rego.v1
+
+      default valid := false
+
+      # all artifacts MUST be valid
+      valid if {
+        not failed_verification(input)
+      }
+
+      failed_verification(artifacts) if {
+          count(artifacts) == 0
+      }
+
+      failed_verification(artifacts) if {
+        not passed_verification(artifacts)
+      }
+
+      passed_verification(artifacts) if {
+        has_trusted_signature(artifacts)
+        has_sbom_with_trusted_signature(artifacts)
+        has_vuln_result_with_trusted_signature(artifacts)
+      }
+      
+      has_trusted_signature(artifacts) if {
+        some f in artifacts
+        f.artifactType == "application/vnd.cncf.notary.signature"
+        verifierReports := f.verifierReports
+        some r in verifierReports
+        r.verifierName == "notation"
+        r.isSuccess == true
+      }
+      
+      has_sbom_with_trusted_signature(artifacts) if {
+        some f in artifacts
+        f.artifactType == "application/spdx+json"
+        verifierReports := f.verifierReports
+        some r in verifierReports
+        r.verifierName == "sbom"
+        r.isSuccess == true
+        nested := f.nestedReports
+        artifact_is_signed(nested)
+      }
+      
+      has_vuln_result_with_trusted_signature(artifacts) if {
+        some f in artifacts
+        f.artifactType == "application/sarif+json"
+        verifierReports := f.verifierReports
+        some r in verifierReports
+        r.verifierName == "vulnerabilityreport"
+        r.isSuccess == true
+        nested := f.nestedReports
+        artifact_is_signed(nested)
+      }
+      
+      artifact_is_signed(reports) if {
+        some r in reports
+        r.artifactType == "application/vnd.cncf.notary.signature"
+        verifiers := r.verifierReports
+        some v in verifiers
+        v.verifierName == "notation"
+        v.isSuccess == true
+      }

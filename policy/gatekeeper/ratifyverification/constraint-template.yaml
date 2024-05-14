@@ -1,0 +1,65 @@
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: ratifyverification
+spec:
+  crd:
+    spec:
+      names:
+        kind: RatifyVerification
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package ratifyverification
+
+        import future.keywords
+
+        # Base Gatekeeper violation
+        violation[{"msg": msg}] {
+          images := [img | img = input.review.object.spec.containers[_].image]
+          images_init := [img | img = input.review.object.spec.initContainers[_].image]
+          images_ephemeral := [img | img = input.review.object.spec.ephemeralContainers[_].image]
+          other_images := array.concat(images_init, images_ephemeral)
+          all_images := array.concat(other_images, images)
+          remote_data := external_data({"provider": "ratify-provider", "keys": all_images})
+          msg := response_with_error(remote_data)
+        }
+
+        # Check if there are any system errors
+        response_with_error(response) := result if {
+          err := response.system_error
+          err != ""
+          result := sprintf("System error calling external data provider: %s", [err])
+        } else := result if {
+          count(response.errors) > 0
+          result := sprintf("Error validating one or more images: %s", response.errors)
+        } else := result if {
+          subject_result := response.responses[_]
+          result := response_on_error(subject_result)
+        }
+
+        response_on_error(subject_result) := error_msg if {
+          subject_result[1].isSuccess == false
+          not subject_result[1]["verifierReports"]
+          error_msg := sprintf("Subject %s failed verification: Subject lacks reference artifacts", [subject_result[0]])
+        } else := error_msg if {
+          verification_result := subject_result[1].verifierReports
+          count(verification_result) > 0
+          v := {m | some artifact in verification_result
+                    some verifier in artifact.verifierReports
+                    m := extract_message(verifier)
+                }
+          n := {m | some artifact in verification_result
+                    some nested in artifact.nestedReports
+                    m := extract_message(nested)
+                }
+          all_messages := v | n
+          count(all_messages) > 0
+          message := concat("; ", all_messages)
+          error_msg := sprintf("Subject %s failed verification: %s", [subject_result[0], message])
+        }
+
+        extract_message(report) := message if {
+          report.isSuccess == false
+          message := report.message
+        }

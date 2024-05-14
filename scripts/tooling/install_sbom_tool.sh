@@ -17,7 +17,7 @@
 # DEALINGS IN THE SOFTWARE.
 
 #######################################################
-# <SCRIPT PURPOSE>
+# Download and install Microsoft's sbom-tool
 #
 # Prerequisites:
 # - 
@@ -27,11 +27,16 @@
 # ENV VARIABLES: NONE
 #########################
 
-set -euo pipefail
+set -uo pipefail
 
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+SBOM_TOOLING_PATH=/usr/local/bin
+ARCH=linux-x64
+SBOM_TOOL_VERSION=2.2.4
 
-$SCRIPT_DIR/install-oras.sh
-$SCRIPT_DIR/install-notation.sh
-$SCRIPT_DIR/install-sbom-tool.sh
-$SCRIPT_DIR/install-trivy.sh
+# download SBOM Tool
+SBOM_DL_FILE=sbom-tool-$ARCH
+curl -Lo sbom-tool https://github.com/microsoft/sbom-tool/releases/download/v$SBOM_TOOL_VERSION/$SBOM_DL_FILE
+
+# Install SBOM tool
+chmod +x sbom-tool
+mv sbom-tool $SBOM_TOOLING_PATH

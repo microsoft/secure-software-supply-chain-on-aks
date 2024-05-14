@@ -96,7 +96,7 @@ fi
 GATEKEEPER_VERSION=${GATEKEEPER_VERSION:-}
 if [ -z "$GATEKEEPER_VERSION" ]
 then
-    GATEKEEPER_VERSION="3.11.0"
+    GATEKEEPER_VERSION="3.14.0"
     write_env "GATEKEEPER_VERSION" $GATEKEEPER_VERSION
     print_style "No Gatekeeper version in [GATEKEEPER_VERSION] specified. Defaulting to $GATEKEEPER_VERSION" info
 fi
@@ -104,7 +104,7 @@ fi
 RATIFY_VERSION=${RATIFY_VERSION:-}
 if [ -z "$RATIFY_VERSION" ]
 then
-    RATIFY_VERSION="1.7.0"
+    RATIFY_VERSION="1.12.0"
     write_env "RATIFY_VERSION" $RATIFY_VERSION
     print_style "No Ratify version in [RATIFY_VERSION] specified. Defaulting to $RATIFY_VERSION" info
 fi
@@ -112,7 +112,7 @@ fi
 KUBERNETES_VERSION=${KUBERNETES_VERSION:-}
 if [ -z "$KUBERNETES_VERSION" ]
 then
-    KUBERNETES_VERSION="1.26.3"
+    KUBERNETES_VERSION="1.27.7"
     write_env "KUBERNETES_VERSION" $KUBERNETES_VERSION
     print_style "No Kubernetes version in [KUBERNETES_VERSION] specified. Defaulting to $KUBERNETES_VERSION" info
 fi

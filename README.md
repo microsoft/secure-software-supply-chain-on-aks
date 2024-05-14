@@ -37,6 +37,14 @@ When working with this walkthrough, there are two pipeline options for building 
 
 Please ensure [the walkthrough environment](#walkthrough-environment) is up and running before continuing with either pipeline option.
 
+Starting with the desired pipeline option, this guide is composed of five steps:
+
+1. Infrastructure configuration
+2. Inspect container images and artifacts
+3. Policy definition and assignment
+4. Workload deployment and policy enforcement
+5. Teardown
+
 [![Continue with Azure Pipelines](https://img.shields.io/badge/-Azure_Pipelines-f8f8f8?style=for-the-badge&logo=azuredevops&logoColor=0078D7)](docs/walkthrough/azure-pipelines/README.md)
 
 [![Continue with GitHub Actions](https://img.shields.io/badge/-GitHub_Actions-f8f8f8?style=for-the-badge&logo=github&logoColor=181717)](docs/walkthrough/github-actions/README.md)

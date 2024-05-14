@@ -16,18 +16,19 @@
 # CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-#######################################################
-# Deploy gatekeeper and ratfy to the cluster
-#######################################################
+###################################################
+# Deploy Gatekeeper and Ratify to the AKS cluster #
+###################################################
 
-#########################
+####################################################################
 # ENV VARIABLES:
 # RESOURCE_GROUP_NAME
 # AKS_NAME
 # GATEKEEPER_VERSION
 # RATIFY_VERSION
 # RATIFY_CLIENT_ID
-#########################
+# (for details on environment variables see ./config/environment.md)
+####################################################################
 
 set -o errexit
 set -o pipefail
@@ -42,9 +43,9 @@ set -o nounset
 # used for pretty printing to terminal
 . ./scripts/helper/common.sh
 
-##################
+###############
 # Helm Charts #
-##################
+###############
 
 print_block_header "Installing Helm Charts" warning
 
@@ -59,12 +60,15 @@ if ! helm status -n gatekeeper-system gatekeeper 2>/dev/null; then
     helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
     helm repo update gatekeeper
 
-    helm install gatekeeper gatekeeper/gatekeeper  \
-    --version $GATEKEEPER_VERSION \
-    --namespace gatekeeper-system --create-namespace \
-    --set enableExternalData=true \
-    --set validatingWebhookTimeoutSeconds=5 \
-    --set mutatingWebhookTimeoutSeconds=2
+    helm install gatekeeper/gatekeeper  \
+      --version $GATEKEEPER_VERSION \
+      --name-template=gatekeeper \
+      --namespace gatekeeper-system --create-namespace \
+      --set enableExternalData=true \
+      --set validatingWebhookTimeoutSeconds=5 \
+      --set mutatingWebhookTimeoutSeconds=2 \
+      --set externaldataProviderResponseCacheTTL=10s
+
 else
     print_style "Using existing resource: Gatekeeper" info
 fi
@@ -75,18 +79,15 @@ if ! helm status -n gatekeeper-system ratify 2>/dev/null; then
     helm repo add ratify https://deislabs.github.io/ratify
     helm repo update ratify
 
-    helm install ratify \
-    ratify/ratify --atomic \
+    helm install ratify ratify/ratify --atomic \
     --namespace gatekeeper-system --create-namespace \
     --version=$RATIFY_VERSION \
     --set gatekeeper.version=$GATEKEEPER_VERSION \
+    --set featureFlags.RATIFY_CERT_ROTATION=true \
     --set azureWorkloadIdentity.clientId=$RATIFY_CLIENT_ID \
     --set oras.authProviders.azureWorkloadIdentityEnabled=true \
-    --set-file notaryCert=./scripts/certs/ca.crt
+    --set policy.useRego=true # even though we'll be overwriting it, this ensures Ratify expects to use rego and not config-driven policy
+
 else
     print_style "Using existing resource: Ratify" info
 fi
-
-# Save the fully qualified name of Ratify pod for future step use
-ratify_pod=$(kubectl get pods --namespace gatekeeper-system -o=jsonpath='{.items[-1].metadata.name}')
-write_env "RATIFY_POD" $ratify_pod

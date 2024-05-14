@@ -64,13 +64,11 @@ if [ -z $AKS_NAME ]; then
         --kubernetes-version $KUBERNETES_VERSION \
         --enable-oidc-issuer \
         --enable-workload-identity \
-        --attach-acr $ACR_NAME \
         --tier free \
         --node-count 2 \
         --node-vm-size Standard_DS2_v2 \
         --os-sku AzureLinux \
         --generate-ssh-keys \
-        -y \
         --tags $TAGS \
         --nodepool-tags $TAGS \
         --query "oidcIssuerProfile.issuerUrl" \
@@ -80,6 +78,8 @@ if [ -z $AKS_NAME ]; then
 
     write_env "AKS_NAME" $aks_name
     write_env "AKS_OIDC_ISSUER" $aks_oidc_issuer
+
+    az aks update -n $aks_name -g $RESOURCE_GROUP_NAME --attach-acr  /subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.ContainerRegistry/registries/${ACR_NAME} --no-wait
 else
     print_style "Using existing resource: $AKS_NAME" info
 fi

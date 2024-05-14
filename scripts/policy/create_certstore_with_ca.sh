@@ -16,27 +16,35 @@
 # CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 
-#######################################################
-# Apply Gatekeeper CRDs, templates, and template definitions
-#######################################################
+#####################################################################
+# Create a certificate store CRD with the contents of the ca.crt file
+#####################################################################
 
-#########################
+#####################
 # ENV VARIABLES: NONE
-#########################
+#####################
 
 set -o errexit
-set -o pipefail
 set -o nounset
 
 # For debugging
 # set -o xtrace 
 
-# used for pretty printing to terminal
-. ./scripts/helper/common.sh
+export certstore_yaml="./policy/ratify/notation-certificatestore.yaml"
 
-# all controls configured within Ratify must pass
+rm -f $certstore_yaml
 
-print_style "Deploy template and constraint: External data call to Ratify must return success" info
-
-kubectl apply -f ./policy/gatekeeper/ratifyverification/constraint-template.yaml
-kubectl apply -f ./policy/gatekeeper/ratifyverification/constraint.yaml
+cat <<EOF > $certstore_yaml
+apiVersion: config.ratify.deislabs.io/v1beta1
+kind: CertificateStore
+metadata:
+  name: certstore-inline
+  namespace: gatekeeper-system
+spec:
+  provider: inline
+  parameters:
+    value: |
+$(while IFS= read -r line; do
+    echo "      $line" 
+done < "./scripts/certs/ca.crt")
+EOF

@@ -20,12 +20,12 @@
 # Generate all certs need to sign and verify artifacts
 #######################################################
 
-#########################
+####################################################################
 # ENV VARIABLES:
-# for details on environment variables see ./config/environment.md
-# SIGNING_CERT_NAME
+# PROJECT_NAME
 # KEY_VAULT_NAME
-#########################
+# (for details on environment variables see ./config/environment.md)
+####################################################################
 
 set -o errexit
 set -o pipefail
@@ -42,14 +42,52 @@ set -o nounset
 
 print_block_header "Configuring Certificates" warning
 
-SIGNING_KEY_ID=${SIGNING_KEY_ID:-}
-if [ -z $SIGNING_KEY_ID ];then
+CA_CERT_SUBJECT=${CA_CERT_SUBJECT:-}
+
+if [[ -z "$CA_CERT_SUBJECT" ]]; then
+    echo "CA_CERT_SUBJECT=\"/C=US/ST=WA/L=Redmond/O=Company ${PROJECT_NAME}/CN=${PROJECT_NAME} Certificate Authority\"" >> $env_file
+    export CA_CERT_SUBJECT="/C=US/ST=WA/L=Redmond/O=Company ${PROJECT_NAME}/CN=${PROJECT_NAME} Certificate Authority"
+fi
+
+ca_cert_file="./scripts/certs/ca.crt"
+
+if [ ! -f "$ca_cert_file" ]; then 
     ./scripts/certs/create_ca.sh
+fi
+
+SIGN_CERT_SUBJECT=${SIGN_CERT_SUBJECT:-}
+
+if [[ -z "$SIGN_CERT_SUBJECT" ]]; then
+    echo "SIGN_CERT_SUBJECT=\"C=US, ST=WA, L=Redmond, O=Company ${PROJECT_NAME}, OU=Org A, CN=pipeline.example.com\"" >> $env_file
+    export SIGN_CERT_SUBJECT="C=US, ST=WA, L=Redmond, O=Company ${PROJECT_NAME}, OU=Org A, CN=pipeline.example.com"
+fi
+
+SIGNING_KEY_ID=${SIGNING_KEY_ID:-}
+
+if [ -z $SIGNING_KEY_ID ]; then
+
+    write_env "SIGNING_CERT_NAME" "${PROJECT_NAME}-pipeline-cert"
     ./scripts/certs/create_signing_cert_kv.sh
 
-    signing_key_id=$(az keyvault certificate show --vault-name "${KEY_VAULT_NAME}" --name "${SIGNING_CERT_NAME}" --query kid -o tsv)
-
-    write_env "SIGNING_KEY_ID" $signing_key_id
 else
-    print_style "Using existing resource: $SIGNING_KEY_ID" info
+    print_style "Using existing id: $SIGNING_KEY_ID" info
+fi
+
+
+ALT_CERT_SUBJECT=${ALT_CERT_SUBJECT:-}
+
+if [[ -z "$ALT_CERT_SUBJECT" ]]; then
+    echo "ALT_CERT_SUBJECT=\"C=US, ST=WA, L=Seattle, O=Company ${PROJECT_NAME}, OU=Org B, CN=alt.example.com\"" >> $env_file
+    export ALT_CERT_SUBJECT="C=US, ST=WA, L=Seattle, O=Company ${PROJECT_NAME}, OU=Org B, CN=alt.example.com"
+fi
+
+ALT_SIGNING_KEY_ID=${ALT_SIGNING_KEY_ID:-}
+
+if [ -z $ALT_SIGNING_KEY_ID ]; then
+
+    write_env "ALT_SIGNING_CERT_NAME" "${PROJECT_NAME}-pipeline-cert-alt"
+    ./scripts/certs/create_alt_signing_cert_kv.sh
+
+else
+    print_style "Using existing id: $ALT_SIGNING_KEY_ID" info
 fi

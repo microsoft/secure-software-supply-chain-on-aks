@@ -34,8 +34,17 @@ set -o nounset
 # used for pretty printing to terminal
 . ./scripts/helper/common.sh
 
+print_style "Apply Ratify rego Policy CRD" info
+kubectl apply -f ./policy/ratify/policy.yaml
+
+print_style "Apply Ratify Certificate Store CRD with inline CA certificate" info
+kubectl apply -f ./policy/ratify/notation-certificatestore.yaml
+
+print_style "Apply Ratify Verifier CRD to update Notation signature verifier" info
+kubectl apply -f ./policy/ratify/verifier-signature.notation.yaml
+
 print_style "Apply Ratify Verifier CRD to configure SBOM verifier" info
 kubectl apply -f ./policy/ratify/verifier-sbom.yaml
 
-print_style "Apply Ratify Verifier CRD to configure JSON Schema Validator verifier for Trivy vulnerability scan results" info
+print_style "Apply Ratify Verifier CRD to configure Vulnerability Report verifier" info
 kubectl apply -f ./policy/ratify/verifier-vulnscanresult.trivy.yaml

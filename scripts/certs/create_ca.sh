@@ -16,13 +16,14 @@
 # CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 
-#######################################################
-# Creates a local certificate authority (CA) with OpenSSL.
-#######################################################
+############################################################
+# Creates a local certificate authority (CA) with OpenSSL. #
+############################################################
 
-#########################
-# ENV VARIABLES: NONE
-#########################
+#######################
+# ENV VARIABLES: 
+# CA_CERT_SUBJECT
+#######################
 
 set -euo pipefail
 
@@ -50,4 +51,4 @@ EOF
 openssl genpkey -algorithm RSA -out "${script_dir}/ca.key" -pkeyopt rsa_keygen_bits:4096 -quiet
 
 # create root CA certificate
-openssl req -x509 -new -nodes -key "${script_dir}/ca.key" -sha256 -days 3650 -extensions 'notation_ca' -config "${script_dir}/openssl.cnf" -out "${script_dir}/ca.crt" -subj "/C=US/ST=WA/L=Redmond/O=My Company/OU=My Org/CN=ca.example.com"
+openssl req -x509 -new -nodes -key "${script_dir}/ca.key" -sha256 -days 3650 -extensions 'notation_ca' -config "${script_dir}/openssl.cnf" -out "${script_dir}/ca.crt" -subj "${CA_CERT_SUBJECT}"

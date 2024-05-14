@@ -27,24 +27,31 @@
 # ENV VARIABLES: NONE
 #########################
 
-set -uo pipefail
+set -euo pipefail
 
-ORAS_TOOLING_PATH=/usr/local/bin
+NOTATION_TOOLING_PATH=/usr/local/bin
 ARCH=linux_amd64
-ORAS_VERSION=1.0.0
+AKV_PLUGIN_VERSION=1.0.2
+NOTATION_VERSION=1.1.0
 
-# download oras CLI
-ORAS_TAR_FILE=oras_$ORAS_VERSION\_$ARCH.tar.gz
-ORAS_CHECKSUM_FILE=oras_$ORAS_VERSION\_checksums.txt
-curl -LO https://github.com/oras-project/oras/releases/download/v$ORAS_VERSION/$ORAS_TAR_FILE
-curl -LO https://github.com/oras-project/oras/releases/download/v$ORAS_VERSION/$ORAS_CHECKSUM_FILE
+# download Notation CLI
+NOTATION_TAR_FILE=notation_$NOTATION_VERSION\_$ARCH.tar.gz
+NOTATION_CHECKSUM_FILE=notation_$NOTATION_VERSION\_checksums.txt
+curl -LO https://github.com/notaryproject/notation/releases/download/v$NOTATION_VERSION/$NOTATION_TAR_FILE
+curl -LO https://github.com/notaryproject/notation/releases/download/v$NOTATION_VERSION/notation_$NOTATION_VERSION\_checksums.txt
 
-# validate & install oras CLI
-if shasum --check --ignore-missing $ORAS_CHECKSUM_FILE | grep "$ORAS_TAR_FILE: OK"; then
-    tar -zxf $ORAS_TAR_FILE -C $ORAS_TOOLING_PATH oras
-    rm -rf $ORAS_TAR_FILE
-    rm -rf $ORAS_CHECKSUM_FILE
+# validate & install notation CLI
+if shasum --check --ignore-missing $NOTATION_CHECKSUM_FILE | grep "$NOTATION_TAR_FILE: OK"; then
+    tar -zxf $NOTATION_TAR_FILE -C $NOTATION_TOOLING_PATH notation
+    rm -rf $NOTATION_TAR_FILE
+    rm -rf $NOTATION_CHECKSUM_FILE
 else
-    echo "exititing oras CLI installation due to checksums not matching"
+    echo "existing notation CLI installation due to checksums not matching"
     exit 1
 fi
+
+
+AKV_CHECKSUM=f2b2e131a435b6a9742c202237b9aceda81859e6d4bd6242c2568ba556cee20e
+plugin_url="https://github.com/Azure/notation-azure-kv/releases/download/v${AKV_PLUGIN_VERSION}/notation-azure-kv_${AKV_PLUGIN_VERSION}_${ARCH}.tar.gz"
+
+notation plugin install --url $plugin_url --sha256sum $AKV_CHECKSUM

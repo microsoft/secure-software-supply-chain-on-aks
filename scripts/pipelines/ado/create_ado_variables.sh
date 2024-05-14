@@ -24,11 +24,10 @@
 # ENV VARIABLES:
 # for details on environment variables see ./config/environment.md
 # ADO_VARIABLE_GROUP_NAME
-# AKS_NAME
 # ACR_LOGIN_SERVER
-# RESOURCE_GROUP_NAME
 # ADO_AZURE_SERVICE_CONNECTION
 # SIGNING_KEY_ID
+# ALT_SIGNING_KEY_ID
 #########################
 
 set -o errexit
@@ -57,8 +56,7 @@ az pipelines variable-group create \
     --variables \
         ACR_NAME="$ACR_NAME" \
         ACR_LOGIN_SERVER="$ACR_LOGIN_SERVER" \
-        AKS_NAME="$AKS_NAME" \
-        RESOURCE_GROUP="$RESOURCE_GROUP_NAME" \
         AZURE_SERVICE_CONNECTION="$ADO_AZURE_SERVICE_CONNECTION" \
         SIGNING_KEY_ID="$SIGNING_KEY_ID" \
+        ALT_SIGNING_KEY_ID="$ALT_SIGNING_KEY_ID" \
     --output json

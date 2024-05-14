@@ -1,9 +1,12 @@
-apiVersion: config.ratify.deislabs.io/v1alpha1
+apiVersion: config.ratify.deislabs.io/v1beta1
 kind: Verifier
 metadata:
   name: verifier-sbom
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "5"
 spec:
   name: sbom
-  artifactTypes: application/org.example.sbom.v0
-  parameters: 
+  artifactTypes: application/spdx+json
+  parameters:
     nestedReferences: application/vnd.cncf.notary.signature

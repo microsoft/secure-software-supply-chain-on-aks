@@ -411,8 +411,9 @@ config/*.env
 config/*.config
 config/*.json
 
-# file for local work / testing
-scratch.txt
+policy/ratify/notation-certificatestore.yaml
+policy/ratify/verifier-signature.notation.yaml
 
-# megalinter output
+# file for local work / testing
+scratch*.txt
 megalinter-reports/

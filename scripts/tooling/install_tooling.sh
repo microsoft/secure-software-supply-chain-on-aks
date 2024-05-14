@@ -17,38 +17,21 @@
 # DEALINGS IN THE SOFTWARE.
 
 #######################################################
-# Install preview features used for workload identity in AKS
+# <SCRIPT PURPOSE>
+#
+# Prerequisites:
+# - 
 #######################################################
 
 #########################
 # ENV VARIABLES: NONE
 #########################
 
-set -o errexit
-set -o pipefail
-set -o nounset
+set -euo pipefail
 
-# For debugging
-# set -o xtrace
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-# used for working with the env file
-. ./scripts/helper/env.sh
-
-# used for pretty printing to terminal
-. ./scripts/helper/common.sh
-
-# Enable `EnableWorkloadIdentityPreview` feature. It may take ~10 minutes to register.
-if [ $(az feature list -o tsv --query "[?contains(name, 'Microsoft.ContainerService/EnableWorkloadIdentityPreview')].properties.state") != "Registered" ]
-then
-    print_block_header "Registering preview features" info
-    az feature register --namespace "Microsoft.ContainerService" --name "EnableWorkloadIdentityPreview"
-
-    # Check registration status for the feature `EnableWorkloadIdentityPreview` and wait until registration is complete
-    while [ $(az feature list -o tsv --query "[?contains(name, 'Microsoft.ContainerService/EnableWorkloadIdentityPreview')].properties.state") != "Registered" ]
-    do
-        echo "Waiting for Workload Identity feature registration..."
-        sleep 20
-    done
-
-    az provider register --namespace "Microsoft.ContainerService"
-fi
+$SCRIPT_DIR/install_oras.sh
+$SCRIPT_DIR/install_sbom_tool.sh
+$SCRIPT_DIR/install_trivy.sh
+$SCRIPT_DIR/install_notation.sh

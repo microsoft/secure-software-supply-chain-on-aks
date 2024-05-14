@@ -57,7 +57,6 @@ project_name="${PROJECT}-${DEPLOYMENT_ID}"
 
 write_env "PROJECT_NAME" $project_name
 write_env "RESOURCE_PREFIX" "sssc${DEPLOYMENT_ID}"
-write_env "SIGNING_CERT_NAME" "${project_name}-pipeline-cert"
 write_env "GITHUB_REPO_URL" "https://github.com/$GITHUB_REPO"
 
 ####################
@@ -67,33 +66,38 @@ print_block_header "Configuring az account" warning
 print_style "Deploying to Subscription: $AZURE_SUBSCRIPTION_ID" info
 az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
+az_sub=$(az account show --output json)
+
+az_sub_name=$(echo "$az_sub" | jq -r '.name')
+write_env "AZURE_SUBSCRIPTION_NAME" $az_sub_name
+
+az_sp_tenant_id=$(echo "$az_sub" | jq -r '.tenantId')
+write_env "AZURE_TENANT_ID" $az_sp_tenant_id
+
 #########
 # Steps #
 #########
 
-# Preview Features
-scripts/infra/steps/preview_features.sh
-
 # Create Resource Group
 ./scripts/infra/steps/resource_group.sh
-
-# Create ACR 
-./scripts/infra/steps/acr.sh
 
 # App Registration
 ./scripts/infra/steps/app_registration.sh
 
-# Create AKS
-./scripts/infra/steps/aks.sh
+# Create ACR 
+./scripts/infra/steps/acr.sh
 
 # Azure Key Vault
 ./scripts/infra/steps/keyvault.sh
 
-# Signing Certificates
-./scripts/infra/steps/certs.sh
+# Create AKS
+./scripts/infra/steps/aks.sh
 
 # Helm Charts
 ./scripts/infra/steps/helm_charts.sh
+
+# Signing Certificates -- permission propogation for current user is inconsistent in timeliness, moving to the end
+./scripts/infra/steps/certs.sh
 
 # Summary Info
 print_block_header "Summary Information" warning
