@@ -168,7 +168,7 @@ There is an option to set in "sssc.config". If not provided, "3.14.0" will used.
 
 The Helm chart version of Ratify to be deployed. _The Helm chart version will probably not match the applicable GitHub release._
 
-There is an option to set in "sssc.config". If not provided, "1.12.0" will be used.
+There is an option to set in "sssc.config". If not provided, "1.12.1" will be used. _Changing this value is not recommended as there is an increased risk of CRDs and configuration incompatibility due to the breaking changes between Helm chart versions 1.12.0 / 1.12.1 and older or newer releases._
 
 **Script references**:
 

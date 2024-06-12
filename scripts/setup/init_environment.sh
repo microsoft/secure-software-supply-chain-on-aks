@@ -104,7 +104,7 @@ fi
 RATIFY_VERSION=${RATIFY_VERSION:-}
 if [ -z "$RATIFY_VERSION" ]
 then
-    RATIFY_VERSION="1.12.0"
+    RATIFY_VERSION="1.12.1"
     write_env "RATIFY_VERSION" $RATIFY_VERSION
     print_style "No Ratify version in [RATIFY_VERSION] specified. Defaulting to $RATIFY_VERSION" info
 fi
