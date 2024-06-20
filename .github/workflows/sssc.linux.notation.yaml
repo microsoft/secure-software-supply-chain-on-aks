@@ -66,7 +66,7 @@ jobs:
 
       - name: "Build and push image"
         id: push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ${{ github.workspace }}/src/trips
           tags: ${{ env.ACR_LOGIN_SERVER }}/trips:v1
@@ -199,7 +199,7 @@ jobs:
 
       - name: "Build and push image"
         id: BuildAndPush
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ${{ github.workspace }}/src/poi
           tags: ${{ env.ACR_LOGIN_SERVER }}/poi:v1
@@ -249,7 +249,7 @@ jobs:
 
       - name: "Build and push image"
         id: push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ${{ github.workspace }}/src/userprofile
           tags: ${{ env.ACR_LOGIN_SERVER }}/userprofile:v1
