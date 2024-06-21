@@ -76,7 +76,7 @@ fi
 if ! helm status -n gatekeeper-system ratify 2>/dev/null; then
     print_style "Installing Ratify on the cluster" info
 
-    helm repo add ratify https://deislabs.github.io/ratify
+    helm repo add ratify https://ratify-project.github.io/ratify
     helm repo update ratify
 
     helm install ratify ratify/ratify --atomic \
